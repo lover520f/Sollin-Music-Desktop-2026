@@ -487,7 +487,7 @@ Sollin 是独立项目，但它受益于以下开源项目的思路和生态：
 - [Apple Music-like Lyrics](https://github.com/amll-dev/applemusic-like-lyrics)：用于实现 Apple Music 风格歌词体验的歌词渲染库。
 - Electron、React、Vite、TypeScript、Tailwind CSS 以及更广泛的开源生态。
 
-- [linux.do](https://linux.do)：Linux 技术社区。
+- [linux.do](https://linux.do)：Linux 社区，AI交流平台。
 
 ## 许可证
 

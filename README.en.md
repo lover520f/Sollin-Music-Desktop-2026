@@ -488,7 +488,7 @@ Sollin is an independent project, but it benefits from the ideas and ecosystem b
 - [Apple Music-like Lyrics](https://github.com/amll-dev/applemusic-like-lyrics): lyric rendering libraries used for Apple Music-like lyric experiences.
 - Electron, React, Vite, TypeScript, Tailwind CSS and the broader open-source ecosystem.
 
-- [linux.do](https://linux.do): Linux community.
+- [linux.do](https://linux.do): Linux & AI community.
 
 ## License
 
