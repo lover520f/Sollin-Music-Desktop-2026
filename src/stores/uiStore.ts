@@ -11,6 +11,15 @@ type PlaylistCreateMode = 'default' | 'local'
 export type BackgroundMode = 'album' | 'solid' | 'gradient' | 'image'
 export type PlayerBackdropMode = 'dynamic' | 'static' | 'amll'
 
+export interface AmllLyricSettings {
+  fontSize: number
+  lineHeight: number
+  lineGap: number
+  alignPosition: number
+  enableBlur: boolean
+  enableScale: boolean
+}
+
 export interface BackgroundSettings {
   mode: BackgroundMode
   solidColor: string
@@ -37,6 +46,15 @@ export const DEFAULT_BACKGROUND_SETTINGS: BackgroundSettings = {
   applyToHome: true,
 }
 
+export const DEFAULT_AMLL_LYRIC_SETTINGS: AmllLyricSettings = {
+  fontSize: 40,
+  lineHeight: 1.2,
+  lineGap: 0.5,
+  alignPosition: 0.45,
+  enableBlur: true,
+  enableScale: true,
+}
+
 const sanitizeLyricsPlayerMode = (mode: unknown): LyricsPlayerMode => (
   isLyricsPlayerMode(mode) ? mode : 'default'
 )
@@ -44,6 +62,27 @@ const sanitizeLyricsPlayerMode = (mode: unknown): LyricsPlayerMode => (
 const sanitizePlayerBackdropMode = (mode: unknown): PlayerBackdropMode => (
   mode === 'static' || mode === 'amll' ? mode : 'dynamic'
 )
+
+const clampNumber = (value: unknown, fallback: number, min: number, max: number) => {
+  const numericValue = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numericValue)) return fallback
+  return Math.min(max, Math.max(min, numericValue))
+}
+
+const sanitizeAmllLyricSettings = (settings: unknown): AmllLyricSettings => {
+  const value = settings && typeof settings === 'object'
+    ? settings as Partial<AmllLyricSettings>
+    : {}
+
+  return {
+    fontSize: clampNumber(value.fontSize, DEFAULT_AMLL_LYRIC_SETTINGS.fontSize, 24, 72),
+    lineHeight: clampNumber(value.lineHeight, DEFAULT_AMLL_LYRIC_SETTINGS.lineHeight, 1, 1.8),
+    lineGap: clampNumber(value.lineGap, DEFAULT_AMLL_LYRIC_SETTINGS.lineGap, 0.2, 1.2),
+    alignPosition: clampNumber(value.alignPosition, DEFAULT_AMLL_LYRIC_SETTINGS.alignPosition, 0.25, 0.65),
+    enableBlur: typeof value.enableBlur === 'boolean' ? value.enableBlur : DEFAULT_AMLL_LYRIC_SETTINGS.enableBlur,
+    enableScale: typeof value.enableScale === 'boolean' ? value.enableScale : DEFAULT_AMLL_LYRIC_SETTINGS.enableScale,
+  }
+}
 
 interface UIStore {
   // Close behavior
@@ -115,6 +154,11 @@ interface UIStore {
   // Player page backdrop
   playerBackdropMode: PlayerBackdropMode
   setPlayerBackdropMode: (mode: PlayerBackdropMode) => void
+
+  // Apple Music-like lyrics display
+  amllLyricSettings: AmllLyricSettings
+  setAmllLyricSettings: (settings: Partial<AmllLyricSettings>) => void
+  resetAmllLyricSettings: () => void
 
   // Queue panel
   showQueuePanel: boolean
@@ -246,6 +290,17 @@ export const useUIStore = create<UIStore>()(
       playerBackdropMode: 'dynamic',
       setPlayerBackdropMode: (playerBackdropMode) => set({ playerBackdropMode }),
 
+      // Apple Music-like lyrics display
+      amllLyricSettings: DEFAULT_AMLL_LYRIC_SETTINGS,
+      setAmllLyricSettings: (settings) =>
+        set((state) => ({
+          amllLyricSettings: sanitizeAmllLyricSettings({
+            ...state.amllLyricSettings,
+            ...settings,
+          }),
+        })),
+      resetAmllLyricSettings: () => set({ amllLyricSettings: DEFAULT_AMLL_LYRIC_SETTINGS }),
+
       // Queue panel
       showQueuePanel: false,
       toggleQueuePanel: () => set((state) => ({ showQueuePanel: !state.showQueuePanel })),
@@ -291,7 +346,7 @@ export const useUIStore = create<UIStore>()(
     }),
     {
       name: 'ui-storage',
-      version: 7,
+      version: 8,
       migrate: (persistedState: any, version: number) => {
         if (persistedState?.state) {
           const legacyKeys = ['api' + 'BaseUrl', 'show' + 'Unified' + 'AuthModal']
@@ -315,9 +370,13 @@ export const useUIStore = create<UIStore>()(
         if (version < 7 && persistedState?.state) {
           persistedState.state.lyricsPlayerMode = 'default'
         }
+        if (version < 8 && persistedState?.state) {
+          persistedState.state.amllLyricSettings = DEFAULT_AMLL_LYRIC_SETTINGS
+        }
         if (persistedState?.state) {
           persistedState.state.lyricsPlayerMode = sanitizeLyricsPlayerMode(persistedState.state.lyricsPlayerMode)
           persistedState.state.playerBackdropMode = sanitizePlayerBackdropMode(persistedState.state.playerBackdropMode)
+          persistedState.state.amllLyricSettings = sanitizeAmllLyricSettings(persistedState.state.amllLyricSettings)
         }
         return persistedState
       },
@@ -331,6 +390,7 @@ export const useUIStore = create<UIStore>()(
           ...nextState,
           lyricsPlayerMode: sanitizeLyricsPlayerMode(nextState.lyricsPlayerMode),
           playerBackdropMode: sanitizePlayerBackdropMode(nextState.playerBackdropMode),
+          amllLyricSettings: sanitizeAmllLyricSettings(nextState.amllLyricSettings),
         }
       },
       partialize: (state) => ({
@@ -348,6 +408,7 @@ export const useUIStore = create<UIStore>()(
         lyricsLeftPanelCollapsed: state.lyricsLeftPanelCollapsed,
         lyricsPlayerMode: state.lyricsPlayerMode,
         playerBackdropMode: state.playerBackdropMode,
+        amllLyricSettings: state.amllLyricSettings,
         backgroundSettings: state.backgroundSettings,
       }),
     }
