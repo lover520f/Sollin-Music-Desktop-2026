@@ -166,6 +166,7 @@ const emptySnapshot = (): DataSyncSnapshotData => ({
     theme: 'dark',
     fontFamily: '',
     customFontDataUrl: '',
+    globalFontSize: 16,
     closeBehavior: 'ask',
     backgroundSettings: {},
     lyricsPlayerMode: 'default',

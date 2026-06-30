@@ -4,7 +4,7 @@ import { AnimatePresence } from 'framer-motion'
 import Layout from '@/components/Layout'
 import { MAX_PRELOAD_SONG_COUNT, usePlayerStore } from '@/stores/playerStore'
 import { useUserStore } from '@/stores/userStore'
-import { useUIStore } from '@/stores/uiStore'
+import { applyGlobalFontSize, useUIStore } from '@/stores/uiStore'
 import CreatePlaylistModal from '@/components/modals/CreatePlaylistModal'
 import ImportPlaylistModal from '@/components/modals/ImportPlaylistModal'
 import UpdateModal from '@/components/modals/UpdateModal'
@@ -75,6 +75,7 @@ function App() {
     showAuthModal,
     setShowAuthModal,
     toasts,
+    globalFontSize,
   } = useUIStore()
 
   // Update modal state
@@ -353,6 +354,10 @@ function App() {
       root.classList.toggle('dark', theme === 'dark')
     }
   }, [theme])
+
+  useEffect(() => {
+    applyGlobalFontSize(globalFontSize)
+  }, [globalFontSize])
 
   // Keyboard shortcuts
   useEffect(() => {

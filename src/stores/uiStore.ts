@@ -11,6 +11,31 @@ type PlaylistCreateMode = 'default' | 'local'
 export type BackgroundMode = 'album' | 'solid' | 'gradient' | 'image'
 export type PlayerBackdropMode = 'dynamic' | 'static' | 'amll'
 
+export const GLOBAL_FONT_SIZE_MIN = 12
+export const GLOBAL_FONT_SIZE_MAX = 30
+export const GLOBAL_FONT_SIZE_DEFAULT = 16
+export const GLOBAL_FONT_SIZE_STEP = 1
+
+const GLOBAL_TEXT_SIZE_RATIOS: Record<string, number> = {
+  '9px': 9 / 16,
+  '10px': 10 / 16,
+  '11px': 11 / 16,
+  '12px': 12 / 16,
+  '14px': 14 / 16,
+  xs: 12 / 16,
+  sm: 14 / 16,
+  base: 1,
+  lg: 18 / 16,
+  xl: 20 / 16,
+  '2xl': 24 / 16,
+  '3xl': 30 / 16,
+  '4xl': 36 / 16,
+  '5xl': 48 / 16,
+  '6xl': 60 / 16,
+}
+
+const formatPx = (value: number) => `${Number(value.toFixed(3))}px`
+
 export interface AmllLyricSettings {
   fontSize: number
   lineHeight: number
@@ -69,6 +94,23 @@ const clampNumber = (value: unknown, fallback: number, min: number, max: number)
   return Math.min(max, Math.max(min, numericValue))
 }
 
+export const sanitizeGlobalFontSize = (value: unknown) => (
+  Math.round(clampNumber(value, GLOBAL_FONT_SIZE_DEFAULT, GLOBAL_FONT_SIZE_MIN, GLOBAL_FONT_SIZE_MAX))
+)
+
+export const applyGlobalFontSize = (value: unknown) => {
+  const fontSize = sanitizeGlobalFontSize(value)
+  if (typeof document === 'undefined') return fontSize
+
+  const root = document.documentElement
+  root.style.setProperty('--app-font-size-base', formatPx(fontSize))
+  Object.entries(GLOBAL_TEXT_SIZE_RATIOS).forEach(([name, ratio]) => {
+    root.style.setProperty(`--app-text-${name}`, formatPx(fontSize * ratio))
+  })
+
+  return fontSize
+}
+
 const sanitizeAmllLyricSettings = (settings: unknown): AmllLyricSettings => {
   const value = settings && typeof settings === 'object'
     ? settings as Partial<AmllLyricSettings>
@@ -96,8 +138,13 @@ interface UIStore {
   // Font
   fontFamily: string
   customFontDataUrl: string
+  globalFontSize: number
   setFontFamily: (font: string) => void
   setCustomFontDataUrl: (dataUrl: string) => void
+  setGlobalFontSize: (fontSize: number) => void
+  increaseGlobalFontSize: () => void
+  decreaseGlobalFontSize: () => void
+  resetGlobalFontSize: () => void
 
   // Sidebar
   sidebarCollapsed: boolean
@@ -220,12 +267,29 @@ export const useUIStore = create<UIStore>()(
       // Font
       fontFamily: '',
       customFontDataUrl: '',
+      globalFontSize: GLOBAL_FONT_SIZE_DEFAULT,
       setFontFamily: (font) => {
         set({ fontFamily: font })
         document.documentElement.style.setProperty('--app-font-family', font || '')
       },
       setCustomFontDataUrl: (dataUrl) => {
         set({ customFontDataUrl: dataUrl })
+      },
+      setGlobalFontSize: (fontSize) => {
+        set({ globalFontSize: applyGlobalFontSize(fontSize) })
+      },
+      increaseGlobalFontSize: () => {
+        set((state) => ({
+          globalFontSize: applyGlobalFontSize(state.globalFontSize + GLOBAL_FONT_SIZE_STEP),
+        }))
+      },
+      decreaseGlobalFontSize: () => {
+        set((state) => ({
+          globalFontSize: applyGlobalFontSize(state.globalFontSize - GLOBAL_FONT_SIZE_STEP),
+        }))
+      },
+      resetGlobalFontSize: () => {
+        set({ globalFontSize: applyGlobalFontSize(GLOBAL_FONT_SIZE_DEFAULT) })
       },
 
       // Sidebar
@@ -346,7 +410,7 @@ export const useUIStore = create<UIStore>()(
     }),
     {
       name: 'ui-storage',
-      version: 8,
+      version: 9,
       migrate: (persistedState: any, version: number) => {
         if (persistedState?.state) {
           const legacyKeys = ['api' + 'BaseUrl', 'show' + 'Unified' + 'AuthModal']
@@ -373,10 +437,14 @@ export const useUIStore = create<UIStore>()(
         if (version < 8 && persistedState?.state) {
           persistedState.state.amllLyricSettings = DEFAULT_AMLL_LYRIC_SETTINGS
         }
+        if (version < 9 && persistedState?.state) {
+          persistedState.state.globalFontSize = GLOBAL_FONT_SIZE_DEFAULT
+        }
         if (persistedState?.state) {
           persistedState.state.lyricsPlayerMode = sanitizeLyricsPlayerMode(persistedState.state.lyricsPlayerMode)
           persistedState.state.playerBackdropMode = sanitizePlayerBackdropMode(persistedState.state.playerBackdropMode)
           persistedState.state.amllLyricSettings = sanitizeAmllLyricSettings(persistedState.state.amllLyricSettings)
+          persistedState.state.globalFontSize = sanitizeGlobalFontSize(persistedState.state.globalFontSize)
         }
         return persistedState
       },
@@ -391,12 +459,14 @@ export const useUIStore = create<UIStore>()(
           lyricsPlayerMode: sanitizeLyricsPlayerMode(nextState.lyricsPlayerMode),
           playerBackdropMode: sanitizePlayerBackdropMode(nextState.playerBackdropMode),
           amllLyricSettings: sanitizeAmllLyricSettings(nextState.amllLyricSettings),
+          globalFontSize: sanitizeGlobalFontSize(nextState.globalFontSize),
         }
       },
       partialize: (state) => ({
         theme: state.theme,
         fontFamily: state.fontFamily,
         customFontDataUrl: state.customFontDataUrl,
+        globalFontSize: state.globalFontSize,
         sidebarCollapsed: state.sidebarCollapsed,
         mainWindowAlwaysOnTop: state.mainWindowAlwaysOnTop,
         currentView: state.currentView,

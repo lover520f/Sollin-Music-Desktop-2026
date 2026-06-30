@@ -75,6 +75,7 @@ const createDefaultSnapshot = (): DataSyncSnapshotData => ({
     theme: 'dark',
     fontFamily: '',
     customFontDataUrl: '',
+    globalFontSize: 16,
     closeBehavior: 'ask',
     backgroundSettings: {
       mode: 'album',
@@ -135,6 +136,7 @@ const cloneSnapshot = (snapshot: DataSyncSnapshotData): DataSyncSnapshotData => 
     theme: snapshot.ui.theme,
     fontFamily: snapshot.ui.fontFamily,
     customFontDataUrl: snapshot.ui.customFontDataUrl,
+    globalFontSize: snapshot.ui.globalFontSize ?? 16,
     closeBehavior: snapshot.ui.closeBehavior,
     backgroundSettings: { ...snapshot.ui.backgroundSettings },
     lyricsPlayerMode: snapshot.ui.lyricsPlayerMode,

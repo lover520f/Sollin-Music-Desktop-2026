@@ -35,6 +35,7 @@ export interface DataSyncSnapshotData {
     theme: 'light' | 'dark' | 'system'
     fontFamily: string
     customFontDataUrl: string
+    globalFontSize?: number
     closeBehavior: 'ask' | 'background' | 'quit'
     backgroundSettings: Record<string, unknown>
     lyricsPlayerMode: string

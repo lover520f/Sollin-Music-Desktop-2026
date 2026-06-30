@@ -4,7 +4,7 @@ import { useFeatureStore } from '@/stores/featureStore'
 import type { SourceSwitchStage, SourceSwitchStageId } from '@/stores/sourceSwitchSettingsStore'
 import { useSourceSwitchSettingsStore } from '@/stores/sourceSwitchSettingsStore'
 import type { BackgroundSettings } from '@/stores/uiStore'
-import { useUIStore, DEFAULT_BACKGROUND_SETTINGS } from '@/stores/uiStore'
+import { useUIStore, DEFAULT_BACKGROUND_SETTINGS, GLOBAL_FONT_SIZE_DEFAULT } from '@/stores/uiStore'
 import { useUserStore } from '@/stores/userStore'
 import type { DataSyncSnapshotData } from '@/types/dataSync'
 
@@ -93,6 +93,7 @@ export const buildDataSyncSnapshotData = (): DataSyncSnapshotData => {
       theme: uiState.theme,
       fontFamily: uiState.fontFamily,
       customFontDataUrl: uiState.customFontDataUrl,
+      globalFontSize: uiState.globalFontSize,
       closeBehavior: uiState.closeBehavior,
       backgroundSettings: clone(uiState.backgroundSettings) as unknown as Record<string, unknown>,
       lyricsPlayerMode: uiState.lyricsPlayerMode,
@@ -140,6 +141,7 @@ export const applyDataSyncSnapshotData = (snapshot: DataSyncSnapshotData) => {
   uiState.setTheme(snapshot.ui.theme)
   uiState.setFontFamily(snapshot.ui.fontFamily)
   uiState.setCustomFontDataUrl(snapshot.ui.customFontDataUrl)
+  uiState.setGlobalFontSize(snapshot.ui.globalFontSize ?? GLOBAL_FONT_SIZE_DEFAULT)
   if (snapshot.ui.customFontDataUrl && snapshot.ui.fontFamily === 'CustomImportedFont, sans-serif') {
     applyCustomFontFace(snapshot.ui.customFontDataUrl)
   } else if (!snapshot.ui.customFontDataUrl) {

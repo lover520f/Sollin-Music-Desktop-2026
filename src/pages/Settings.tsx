@@ -33,9 +33,15 @@ import {
   Sliders,
   Settings as SettingsIcon,
   Image,
+  Type,
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
-import { useUIStore } from '@/stores/uiStore'
+import {
+  GLOBAL_FONT_SIZE_DEFAULT,
+  GLOBAL_FONT_SIZE_MAX,
+  GLOBAL_FONT_SIZE_MIN,
+  useUIStore,
+} from '@/stores/uiStore'
 import { MAX_PRELOAD_SONG_COUNT, usePlayerStore } from '@/stores/playerStore'
 import { useFeatureStore } from '@/stores/featureStore'
 import {
@@ -243,12 +249,18 @@ const SYSTEM_FONTS = [
 function FontSettings() {
   const fontFamily = useUIStore((s) => s.fontFamily)
   const customFontDataUrl = useUIStore((s) => s.customFontDataUrl)
+  const globalFontSize = useUIStore((s) => s.globalFontSize)
   const setFontFamily = useUIStore((s) => s.setFontFamily)
   const setCustomFontDataUrl = useUIStore((s) => s.setCustomFontDataUrl)
+  const increaseGlobalFontSize = useUIStore((s) => s.increaseGlobalFontSize)
+  const decreaseGlobalFontSize = useUIStore((s) => s.decreaseGlobalFontSize)
+  const resetGlobalFontSize = useUIStore((s) => s.resetGlobalFontSize)
   const addToast = useUIStore((s) => s.addToast)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isCustomFont = fontFamily === 'CustomImportedFont, sans-serif'
+  const canDecreaseFontSize = globalFontSize > GLOBAL_FONT_SIZE_MIN
+  const canIncreaseFontSize = globalFontSize < GLOBAL_FONT_SIZE_MAX
 
   // Apply custom font face on mount if we have a data URL
   useEffect(() => {
@@ -330,66 +342,119 @@ function FontSettings() {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-[var(--text-primary)]">全局字体</h3>
-        {fontFamily && (
-          <button
-            onClick={handleReset}
-            className="text-xs text-primary-500 hover:text-primary-600 transition-colors"
-          >
-            恢复默认
-          </button>
-        )}
-      </div>
-
-      {/* System font presets */}
-      <div className="grid grid-cols-2 gap-2">
-        {SYSTEM_FONTS.map((font) => (
-          <button
-            key={font.id}
-            onClick={() => handleSelectSystemFont(font.id)}
-            className={cn(
-              'px-3 py-2 text-sm rounded-lg border transition-all text-left truncate',
-              fontFamily === font.id
-                ? 'border-primary-500 bg-primary-500/5 text-primary-600 dark:text-primary-400'
-                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 text-[var(--text-secondary)]'
-            )}
-            style={{ fontFamily: font.id || undefined }}
-          >
-            {font.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Import custom font */}
-      <div className="flex items-center gap-3 pt-1">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className={cn(
-            'flex-1 px-3 py-2 text-sm rounded-lg border border-dashed transition-all text-center',
-            isCustomFont
-              ? 'border-primary-500 bg-primary-500/5 text-primary-600 dark:text-primary-400'
-              : 'border-gray-300 dark:border-gray-600 hover:border-primary-400 text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+    <div className="space-y-5">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Type className="h-4 w-4 text-[var(--text-muted)]" />
+            <h3 className="text-sm font-medium text-[var(--text-primary)]">全局字号</h3>
+          </div>
+          {globalFontSize !== GLOBAL_FONT_SIZE_DEFAULT && (
+            <button
+              onClick={resetGlobalFontSize}
+              className="text-xs text-primary-500 hover:text-primary-600 transition-colors"
+            >
+              恢复默认
+            </button>
           )}
-        >
-          {isCustomFont ? '✓ 已导入自定义字体' : '导入字体文件 (TTF/OTF/WOFF/WOFF2)'}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".ttf,.otf,.woff,.woff2"
-          onChange={handleImportFont}
-          className="hidden"
-        />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
+          <div className="inline-flex items-center overflow-hidden rounded-full border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/70">
+            <button
+              type="button"
+              aria-label="减小全局字号"
+              onClick={decreaseGlobalFontSize}
+              disabled={!canDecreaseFontSize}
+              className="h-8 w-10 text-sm font-semibold text-[var(--text-secondary)] transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-800"
+            >
+              A-
+            </button>
+            <span className="min-w-[4.25rem] border-x border-gray-200 px-3 text-center text-sm tabular-nums text-[var(--text-secondary)] dark:border-gray-700">
+              {globalFontSize}px
+            </span>
+            <button
+              type="button"
+              aria-label="增大全局字号"
+              onClick={increaseGlobalFontSize}
+              disabled={!canIncreaseFontSize}
+              className="h-8 w-10 text-sm font-semibold text-[var(--text-secondary)] transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-800"
+            >
+              A+
+            </button>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-3 truncate text-[var(--text-secondary)]">
+              <span className="text-xs">小字</span>
+              <span className="text-sm">正文</span>
+              <span className="text-lg font-semibold">标题</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Preview */}
-      <div
-        className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-sm text-[var(--text-secondary)]"
-        style={{ fontFamily: fontFamily || undefined }}
-      >
-        字体预览：The quick brown fox jumps over the lazy dog. 你好世界 1234567890
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-[var(--text-primary)]">全局字体</h3>
+          {fontFamily && (
+            <button
+              onClick={handleReset}
+              className="text-xs text-primary-500 hover:text-primary-600 transition-colors"
+            >
+              恢复默认
+            </button>
+          )}
+        </div>
+
+        {/* System font presets */}
+        <div className="grid grid-cols-2 gap-2">
+          {SYSTEM_FONTS.map((font) => (
+            <button
+              key={font.id}
+              onClick={() => handleSelectSystemFont(font.id)}
+              className={cn(
+                'px-3 py-2 text-sm rounded-lg border transition-all text-left truncate',
+                fontFamily === font.id
+                  ? 'border-primary-500 bg-primary-500/5 text-primary-600 dark:text-primary-400'
+                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 text-[var(--text-secondary)]'
+              )}
+              style={{ fontFamily: font.id || undefined }}
+            >
+              {font.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Import custom font */}
+        <div className="flex items-center gap-3 pt-1">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(
+              'flex-1 px-3 py-2 text-sm rounded-lg border border-dashed transition-all text-center',
+              isCustomFont
+                ? 'border-primary-500 bg-primary-500/5 text-primary-600 dark:text-primary-400'
+                : 'border-gray-300 dark:border-gray-600 hover:border-primary-400 text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            )}
+          >
+            {isCustomFont ? '✓ 已导入自定义字体' : '导入字体文件 (TTF/OTF/WOFF/WOFF2)'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".ttf,.otf,.woff,.woff2"
+            onChange={handleImportFont}
+            className="hidden"
+          />
+        </div>
+
+        {/* Preview */}
+        <div
+          className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-sm text-[var(--text-secondary)]"
+          style={{ fontFamily: fontFamily || undefined }}
+        >
+          字体预览：The quick brown fox jumps over the lazy dog. 你好世界 1234567890
+        </div>
       </div>
     </div>
   )

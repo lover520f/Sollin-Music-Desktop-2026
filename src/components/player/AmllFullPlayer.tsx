@@ -362,17 +362,17 @@ export default function AmllFullPlayer() {
           <div className="w-full max-w-[360px]">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1 text-left">
-                <div className="relative mb-1 h-[1.75rem] overflow-hidden">
+                <div className="relative mb-1 min-h-[1.35em] overflow-hidden text-2xl font-bold leading-tight text-white">
                   {/* Hidden plain text for overflow measurement */}
                   <h2
                     ref={titleRef}
-                    className="invisible text-2xl font-bold whitespace-nowrap"
+                    className="invisible whitespace-nowrap"
                   >
                     {currentSong?.name || '未播放'}
                   </h2>
                   {/* Visible content */}
                   {isTitleOverflow ? (
-                    <div className="absolute inset-0 overflow-hidden text-2xl font-bold text-white whitespace-nowrap">
+                    <div className="absolute inset-x-0 top-0 overflow-hidden whitespace-nowrap">
                       <span
                         className="inline-flex"
                         style={{ animation: 'title-led-scroll 8s linear infinite' }}
@@ -382,7 +382,7 @@ export default function AmllFullPlayer() {
                       </span>
                     </div>
                   ) : (
-                    <h2 className="absolute inset-0 truncate text-2xl font-bold text-white">
+                    <h2 className="absolute inset-x-0 top-0 truncate">
                       {currentSong?.name || '未播放'}
                     </h2>
                   )}

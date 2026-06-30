@@ -17,6 +17,22 @@
     --text-secondary: rgba(0, 0, 0, 0.75);
     --text-muted: rgba(0, 0, 0, 0.55);
     --app-font-family: ;
+    --app-font-size-base: 16px;
+    --app-text-9px: 9px;
+    --app-text-10px: 10px;
+    --app-text-11px: 11px;
+    --app-text-12px: 12px;
+    --app-text-14px: 14px;
+    --app-text-xs: 12px;
+    --app-text-sm: 14px;
+    --app-text-base: 16px;
+    --app-text-lg: 18px;
+    --app-text-xl: 20px;
+    --app-text-2xl: 24px;
+    --app-text-3xl: 30px;
+    --app-text-4xl: 36px;
+    --app-text-5xl: 48px;
+    --app-text-6xl: 60px;
   }
 
   html, body {
@@ -40,6 +56,99 @@
 }
 
 @layer utilities {
+  .text-\[9px\] {
+    font-size: var(--app-text-9px) !important;
+  }
+
+  .text-\[10px\] {
+    font-size: var(--app-text-10px) !important;
+  }
+
+  .text-\[11px\] {
+    font-size: var(--app-text-11px) !important;
+  }
+
+  .text-\[12px\] {
+    font-size: var(--app-text-12px) !important;
+  }
+
+  .text-\[14px\] {
+    font-size: var(--app-text-14px) !important;
+  }
+
+  .text-xs {
+    font-size: var(--app-text-xs) !important;
+  }
+
+  .text-sm {
+    font-size: var(--app-text-sm) !important;
+  }
+
+  .text-base {
+    font-size: var(--app-text-base) !important;
+  }
+
+  .text-lg {
+    font-size: var(--app-text-lg) !important;
+  }
+
+  .text-xl {
+    font-size: var(--app-text-xl) !important;
+  }
+
+  .text-2xl {
+    font-size: var(--app-text-2xl) !important;
+  }
+
+  .text-3xl {
+    font-size: var(--app-text-3xl) !important;
+  }
+
+  .text-4xl {
+    font-size: var(--app-text-4xl) !important;
+  }
+
+  .text-5xl {
+    font-size: var(--app-text-5xl) !important;
+  }
+
+  .text-6xl {
+    font-size: var(--app-text-6xl) !important;
+  }
+
+  .text-\[9px\]:not([class*="leading-"]),
+  .text-\[10px\]:not([class*="leading-"]),
+  .text-\[11px\]:not([class*="leading-"]),
+  .text-\[12px\]:not([class*="leading-"]),
+  .text-xs:not([class*="leading-"]) {
+    line-height: 1.35 !important;
+  }
+
+  .text-\[14px\]:not([class*="leading-"]),
+  .text-sm:not([class*="leading-"]) {
+    line-height: 1.43 !important;
+  }
+
+  .text-base:not([class*="leading-"]) {
+    line-height: 1.5 !important;
+  }
+
+  .text-lg:not([class*="leading-"]) {
+    line-height: 1.45 !important;
+  }
+
+  .text-xl:not([class*="leading-"]) {
+    line-height: 1.35 !important;
+  }
+
+  .text-2xl:not([class*="leading-"]),
+  .text-3xl:not([class*="leading-"]),
+  .text-4xl:not([class*="leading-"]),
+  .text-5xl:not([class*="leading-"]),
+  .text-6xl:not([class*="leading-"]) {
+    line-height: 1.22 !important;
+  }
+
   [data-bg-mode="image"] .backdrop-blur-xs,
   [data-bg-mode="image"] .backdrop-blur-sm,
   [data-bg-mode="image"] .backdrop-blur,
