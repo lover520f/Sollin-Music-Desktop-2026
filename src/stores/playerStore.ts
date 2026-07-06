@@ -283,6 +283,8 @@ interface StartPlaybackOptions {
   explicitSourceSwitchInfo?: SourceSwitchInfo | null
   failedSongKeys?: string[]
   preserveUpcomingPlaybackPlan?: boolean
+  skipPlaybackHistoryStack?: boolean
+  playbackHistoryCursor?: number
 }
 
 // Audio output device type
@@ -440,6 +442,9 @@ export const usePlayerStore = create<PlayerStore>()(
       let upcomingPlaybackPlanMode: PlayMode | null = null
       let upcomingPlaybackPlanPlaylistSignature: string | null = null
       let activePreloadRunId = 0
+      let playbackHistoryStack: Song[] = []
+      let playbackHistoryIndex = -1
+      let playbackHistoryPlaylistSignature: string | null = null
       const pendingAudioCacheJobs = new Map<string, PendingAudioCacheJob>()
       let flushPendingAudioCachePromise: Promise<void> | null = null
 
@@ -450,6 +455,12 @@ export const usePlayerStore = create<PlayerStore>()(
       }
 
       const getPlaylistSignature = (songs: Song[]) => songs.map(getSongKey).join('|')
+
+      const clearPlaybackHistoryStack = () => {
+        playbackHistoryStack = []
+        playbackHistoryIndex = -1
+        playbackHistoryPlaylistSignature = null
+      }
 
       const clearUpcomingPlaybackPlan = () => {
         upcomingPlaybackPlan = []
@@ -512,6 +523,44 @@ export const usePlayerStore = create<PlayerStore>()(
       const pickShuffleNextSong = (playlist: Song[]) => {
         if (playlist.length === 0) return null
         return playlist[Math.floor(Math.random() * playlist.length)] || null
+      }
+
+      const isPlaybackHistoryStackValid = (playlist: Song[]) => (
+        playbackHistoryPlaylistSignature === getPlaylistSignature(playlist)
+      )
+
+      const getPlaybackHistorySongAt = (playlist: Song[], index: number) => {
+        if (!isPlaybackHistoryStackValid(playlist)) return null
+        const song = playbackHistoryStack[index]
+        if (!song) return null
+        return playlist.some((item) => isSameSong(item, song)) ? song : null
+      }
+
+      const recordPlaybackHistorySong = (song: Song, playlist: Song[]) => {
+        const playlistSignature = getPlaylistSignature(playlist)
+
+        if (playbackHistoryPlaylistSignature !== playlistSignature) {
+          playbackHistoryPlaylistSignature = playlistSignature
+          playbackHistoryStack = [song]
+          playbackHistoryIndex = 0
+          return
+        }
+
+        const currentHistorySong = playbackHistoryStack[playbackHistoryIndex]
+        if (currentHistorySong && isSameSong(currentHistorySong, song)) return
+
+        const retainedHistory = playbackHistoryIndex >= 0
+          ? playbackHistoryStack.slice(0, playbackHistoryIndex + 1)
+          : []
+
+        playbackHistoryStack = [...retainedHistory, song]
+
+        if (playbackHistoryStack.length > 200) {
+          const overflowCount = playbackHistoryStack.length - 200
+          playbackHistoryStack = playbackHistoryStack.slice(overflowCount)
+        }
+
+        playbackHistoryIndex = playbackHistoryStack.length - 1
       }
 
       const getNextSongForPlayback = (
@@ -1108,6 +1157,12 @@ export const usePlayerStore = create<PlayerStore>()(
 
           maybeShowPlaybackInfo(song, requestedQuality, resource.actualQuality, sourceSwitch, options.suppressInfoToasts)
 
+          if (typeof options.playbackHistoryCursor === 'number') {
+            playbackHistoryIndex = options.playbackHistoryCursor
+          } else if (!options.skipHistory && !options.skipPlaybackHistoryStack) {
+            recordPlaybackHistorySong(playbackSong, getAllowedSongs(get().playlist))
+          }
+
           if (!options.skipHistory) {
             useUserStore.getState().addToRecentlyPlayed(playbackSong)
             useUserStore.getState().addToPlayHistory(playbackSong)
@@ -1657,13 +1712,21 @@ export const usePlayerStore = create<PlayerStore>()(
         const playlist = getAllowedSongs(get().playlist)
         if (playlist.length === 0 || !currentSong) return
 
-        const plannedNextSong = consumeUpcomingPlaybackPlan(currentSong, playlist, playMode)
-        const nextSong = plannedNextSong ?? getNextSongForPlayback(playlist, currentSong, playMode)
+        const historyForwardIndex = playbackHistoryIndex + 1
+        const historyForwardSong = playMode === 'shuffle'
+          ? getPlaybackHistorySongAt(playlist, historyForwardIndex)
+          : null
+        const plannedNextSong = historyForwardSong
+          ? null
+          : consumeUpcomingPlaybackPlan(currentSong, playlist, playMode)
+        const nextSong = historyForwardSong ?? plannedNextSong ?? getNextSongForPlayback(playlist, currentSong, playMode)
         if (nextSong) {
           void startPlayback(nextSong, {
             playlist,
             playlistId: get().playlistId || undefined,
-            preserveUpcomingPlaybackPlan: Boolean(plannedNextSong),
+            preserveUpcomingPlaybackPlan: Boolean(plannedNextSong) && !historyForwardSong,
+            skipPlaybackHistoryStack: Boolean(historyForwardSong),
+            playbackHistoryCursor: historyForwardSong ? historyForwardIndex : undefined,
           })
         }
       },
@@ -1678,7 +1741,16 @@ export const usePlayerStore = create<PlayerStore>()(
         let prevIndex: number
 
         if (playMode === 'shuffle') {
-          prevIndex = Math.floor(Math.random() * playlist.length)
+          const historyBackIndex = playbackHistoryIndex - 1
+          const historyBackSong = getPlaybackHistorySongAt(playlist, historyBackIndex)
+          if (!historyBackSong) return
+          void startPlayback(historyBackSong, {
+            playlist,
+            playlistId: get().playlistId || undefined,
+            skipPlaybackHistoryStack: true,
+            playbackHistoryCursor: historyBackIndex,
+          })
+          return
         } else if (playMode === 'single') {
           prevIndex = currentIndex >= 0 ? currentIndex : 0
         } else {
@@ -1773,6 +1845,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
       setPlaylist: (songs, playlistId) => {
         clearUpcomingPlaybackPlan()
+        clearPlaybackHistoryStack()
         set({ playlist: getAllowedSongs(songs), playlistId: playlistId || null })
         if (get().isPlaying) {
           void preloadUpcomingSongUrls(activePlaybackRequestId)
@@ -1815,6 +1888,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
       clearQueue: () => {
         clearUpcomingPlaybackPlan()
+        clearPlaybackHistoryStack()
         set({ playlist: [], playlistId: null })
       },
 
@@ -1839,6 +1913,7 @@ export const usePlayerStore = create<PlayerStore>()(
         }
 
         clearUpcomingPlaybackPlan()
+        clearPlaybackHistoryStack()
         set({ playlist: shuffled })
         if (get().isPlaying) {
           void preloadUpcomingSongUrls(activePlaybackRequestId)
