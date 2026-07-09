@@ -3,7 +3,7 @@ export type Platform = 'netease' | 'kuwo' | 'qq' | 'kugou' | 'migu'
 export type SongPlatform = Platform | 'local'
 
 export type AudioQuality = '128k' | '320k' | 'flac' | 'flac24bit' | 'hires' | 'atmos' | 'master'
-export type LyricsPlayerMode = 'default' | 'amll'
+export type LyricsPlayerMode = 'default' | 'amll' | 'mineradio'
 
 export interface LxSongQualityMeta {
   type: AudioQuality

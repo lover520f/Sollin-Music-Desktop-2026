@@ -38,6 +38,18 @@ if (import.meta.env.DEV) {
     .catch((err) => {
       console.warn('[vendor musicSdk] dev exposure failed:', err)
     })
+  // Dev-only store handles for DevTools / automation experiments.
+  void Promise.all([
+    import('@/stores/playerStore'),
+    import('@/stores/uiStore'),
+    import('@/stores/playbackProgressStore'),
+  ]).then(([player, ui, progress]) => {
+    ;(window as any).__sollinStores = {
+      usePlayerStore: player.usePlayerStore,
+      useUIStore: ui.useUIStore,
+      usePlaybackProgressStore: progress.usePlaybackProgressStore,
+    }
+  })
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

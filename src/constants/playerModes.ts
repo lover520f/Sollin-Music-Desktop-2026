@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { Disc3, ListMusic } from 'lucide-react'
+import { Disc3, ListMusic, Sparkles } from 'lucide-react'
 import type { LyricsPlayerMode } from '@/types'
 
 export type PlayerModeConfig = {
@@ -21,6 +21,12 @@ export const PLAYER_MODE_OPTIONS: PlayerModeConfig[] = [
     label: 'Apple Music',
     description: '动态背景与逐字歌词',
     icon: Disc3,
+  },
+  {
+    id: 'mineradio',
+    label: 'Mineradio',
+    description: '封面粒子、3D 舞台歌词与电影镜头',
+    icon: Sparkles,
   },
 ]
 

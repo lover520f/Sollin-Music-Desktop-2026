@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import AnimatedOutlet from './PageTransition'
 import {
@@ -43,6 +43,7 @@ import CommentSection from '@/components/CommentSection'
 import AudioVisualizer from '@/components/AudioVisualizer'
 import LxLyricPlayer, { DEFAULT_LYRIC_COLORS, type LyricColorSettings } from '@/components/player/LxLyricPlayer'
 import AmllFullPlayer from '@/components/player/AmllFullPlayer'
+const MineradioFullPlayer = lazy(() => import('@/components/player/MineradioFullPlayer'))
 import PlaybackQualityMenu from '@/components/player/PlaybackQualityMenu'
 import PlaybackRateMenu from '@/components/player/PlaybackRateMenu'
 import { PLAYER_MODE_OPTIONS } from '@/constants/playerModes'
@@ -492,6 +493,11 @@ export default function Layout() {
         <AnimatePresence>
           {showLyricsPanel && lyricsPlayerMode === 'amll' && (
             <AmllFullPlayer />
+          )}
+          {showLyricsPanel && lyricsPlayerMode === 'mineradio' && (
+            <Suspense fallback={null}>
+              <MineradioFullPlayer />
+            </Suspense>
           )}
           {showLyricsPanel && lyricsPlayerMode === 'default' && (
             <LyricsPanel
