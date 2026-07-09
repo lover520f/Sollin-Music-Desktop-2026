@@ -4,6 +4,7 @@ import type { PersistStorage } from 'zustand/middleware'
 import type { Song, PlayMode, AudioQuality, Platform, SongPlatform, LyricData, AudioEffectsState } from '@/types'
 import { QUALITY_NAMES } from '@/constants/audio'
 import api from '@/services/api'
+import { lxSourceApi } from '@/services/lxSource'
 import { playerCore, type PlayerCoreEvent } from '@/services/playerCore'
 import { buildLocalSongPlaybackLyrics, clearCachedSongUrl, resolveSongPlaybackFallbackUrl, resolveSongPlaybackLyrics, resolveSongPlaybackResource } from '@/services/songPlayback'
 import { toggleSourceRegistry } from '@/services/toggleSourceRegistry'
@@ -249,6 +250,34 @@ function isPlaybackAborted(error: unknown): boolean {
   if (error instanceof Error) {
     return error.name === 'AbortError' || /The play\(\) request was interrupted/i.test(error.message)
   }
+  return false
+}
+
+async function hasUsableOnlineSource(): Promise<boolean> {
+  try {
+    const status = await lxSourceApi.getStatus()
+    if (!status.available) return false
+
+    const hasActiveImportedSource = status.managedSources.some((source) => source.exists && source.isActive)
+    if (hasActiveImportedSource) return true
+
+    return Boolean(status.scriptLoaded && status.scriptExists && status.scriptInfo)
+  } catch (error) {
+    console.warn('[PlayerStore] Check LX source status failed:', error)
+    return false
+  }
+}
+
+async function ensureOnlineSourceReadyForPlayback(song: Song): Promise<boolean> {
+  if (song.platform === 'local') return true
+
+  const isReady = await hasUsableOnlineSource()
+  if (isReady) return true
+
+  useUIStore.getState().addToast({
+    type: 'warning',
+    message: '未导入音源，请先到设置中导入 LX 音源，或使用本地音乐播放。',
+  })
   return false
 }
 
@@ -1045,6 +1074,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
       const startPlayback = async(song: Song, options: StartPlaybackOptions = {}) => {
         if (!playerCore.getAudio()) return
+        if (!await ensureOnlineSourceReadyForPlayback(song)) return
 
         const requestId = ++activePlaybackRequestId
         const requestedQuality = options.requestedQuality ?? get().quality
