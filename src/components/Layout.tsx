@@ -21,6 +21,7 @@ import {
   BarChart3,
   SlidersHorizontal,
   RotateCcw,
+  LocateFixed,
 } from 'lucide-react'
 import * as Slider from '@radix-ui/react-slider'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -585,6 +586,9 @@ function QueuePanel() {
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const parentRef = useRef<HTMLDivElement>(null)
   const sourceLabel = resolvePlaylistSourceLabel(playlistId, playlistName)
+  const currentSongIndex = currentSong
+    ? playlist.findIndex((song) => isSamePlayableSong(currentSong, song))
+    : -1
 
   const virtualizer = useVirtualizer({
     count: playlist.length,
@@ -592,6 +596,11 @@ function QueuePanel() {
     estimateSize: () => 44, // approximate row height
     overscan: 10,
   })
+
+  const handleLocateCurrentSong = () => {
+    if (currentSongIndex < 0) return
+    virtualizer.scrollToIndex(currentSongIndex, { align: 'center', behavior: 'smooth' })
+  }
 
   return (
     <div className="p-4 overflow-x-hidden h-full flex flex-col">
@@ -604,9 +613,23 @@ function QueuePanel() {
             </p>
           )}
         </div>
-        <button onClick={() => useUIStore.getState().toggleQueuePanel()} className="btn-icon flex-shrink-0">
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {playlist.length > 0 && (
+            <button
+              type="button"
+              onClick={handleLocateCurrentSong}
+              disabled={currentSongIndex < 0}
+              title="定位到当前播放"
+              aria-label="定位到当前播放"
+              className="btn-icon disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <LocateFixed className="w-5 h-5" />
+            </button>
+          )}
+          <button onClick={() => useUIStore.getState().toggleQueuePanel()} className="btn-icon">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {playlist.length === 0 ? (

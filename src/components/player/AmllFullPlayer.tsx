@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import {
   Play, Pause, Rewind, FastForward,
   Repeat, Repeat1, Shuffle, ChevronDown, ListMusic, Heart, Settings as SettingsIcon,
-  MessageCircle, Mic2, Trash2, Volume2, VolumeX,
+  MessageCircle, Mic2, Trash2, Volume2, VolumeX, LocateFixed,
 } from 'lucide-react'
 import * as Slider from '@radix-ui/react-slider'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -16,6 +16,7 @@ import { usePlaybackProgressStore } from '@/stores/playbackProgressStore'
 import { convertSollinLyricsToAmll } from '@/utils/amllLyricConverter'
 import { cn } from '@/utils/cn'
 import { resolvePlaylistSourceLabel } from '@/utils/playlistSource'
+import { isSamePlayableSong } from '@/utils/songIdentity'
 import CommentSection from '@/components/CommentSection'
 import CoverImage from '@/components/ui/CoverImage'
 import PlayerBackdrop from '@/components/player/PlayerBackdrop'
@@ -110,6 +111,7 @@ export default function AmllFullPlayer() {
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
   const lyricPlayerRef = useRef<LyricPlayerRef>(null)
+  const currentQueueItemRef = useRef<HTMLDivElement>(null)
 
   const recalculateLyricLayout = (delays: number[] = [0, 80, 180]) => {
     const ref = lyricPlayerRef.current
@@ -251,7 +253,7 @@ export default function AmllFullPlayer() {
     const song = playlist[songIndex]
     if (!song) return
 
-    if (currentSong && song.id === currentSong.id && song.platform === currentSong.platform) {
+    if (isSamePlayableSong(currentSong, song)) {
       usePlayerStore.getState().togglePlay()
       return
     }
@@ -259,6 +261,15 @@ export default function AmllFullPlayer() {
     usePlayerStore.getState().playSong(song, playlist)
   }
 
+  const handleLocateCurrentSong = () => {
+    const item = currentQueueItemRef.current
+    if (!item) return
+    item.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+
+  const currentQueueSongIndex = currentSong
+    ? playlist.findIndex((song) => isSamePlayableSong(currentSong, song))
+    : -1
   const queueSourceLabel = resolvePlaylistSourceLabel(playlistId, playlistName)
   const isSongFavorited = currentSong ? isFavorite(currentSong.id, currentSong.platform) : false
   const displayedVolume = isMuted ? 0 : volume
@@ -709,12 +720,24 @@ export default function AmllFullPlayer() {
                     )}
                   </div>
                   {playlist.length > 0 && (
-                    <button
-                      onClick={() => usePlayerStore.getState().clearQueue()}
-                      className="flex-shrink-0 rounded-full px-3 py-1.5 text-sm text-white/45 transition-colors hover:bg-white/10 hover:text-white/80"
-                    >
-                      清空
-                    </button>
+                    <div className="flex flex-shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={handleLocateCurrentSong}
+                        disabled={currentQueueSongIndex < 0}
+                        title="定位到当前播放"
+                        aria-label="定位到当前播放"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-white/45 transition-colors hover:bg-white/10 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <LocateFixed className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => usePlayerStore.getState().clearQueue()}
+                        className="rounded-full px-3 py-1.5 text-sm text-white/45 transition-colors hover:bg-white/10 hover:text-white/80"
+                      >
+                        清空
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -725,12 +748,13 @@ export default function AmllFullPlayer() {
                 ) : (
                   <div className="scrollbar-thin min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
                     {playlist.map((song, index) => {
-                      const isCurrentQueueSong = currentSong?.id === song.id && currentSong?.platform === song.platform
+                      const isCurrentQueueSong = isSamePlayableSong(currentSong, song)
                       const isCurrentPlaying = isCurrentQueueSong && isPlaying
 
                       return (
                         <div
                           key={`${song.platform}-${song.id}-${index}`}
+                          ref={isCurrentQueueSong ? currentQueueItemRef : undefined}
                           className={cn(
                             'group flex items-center gap-2 rounded-xl p-2 transition-colors',
                             isCurrentQueueSong ? 'bg-white/10' : 'hover:bg-white/5'

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
 import { motion } from 'framer-motion'
 import {
-  ChevronDown, Heart, ListMusic, Maximize, Minimize,
+  ChevronDown, Heart, ListMusic, LocateFixed, Maximize, Minimize,
   Pause, Play, Repeat, Repeat1, Scan, Shuffle, SkipBack, SkipForward,
   SlidersHorizontal, Trash2, Volume2, VolumeX,
 } from 'lucide-react'
@@ -12,6 +12,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useUserStore } from '@/stores/userStore'
 import { cn } from '@/utils/cn'
 import { resolvePlaylistSourceLabel } from '@/utils/playlistSource'
+import { isSamePlayableSong } from '@/utils/songIdentity'
 import { convertLyricsToMineradio } from '@/utils/mineradioLyricConverter'
 import { isGatewayCoverUrl, resolveCoverUrl } from '@/services/officialCoverApi'
 import { createMineradioEngine } from '@/vendor/mineradio/engine'
@@ -80,6 +81,7 @@ export default function MineradioFullPlayer() {
   const albumBgRef = useRef<HTMLDivElement>(null)
   const engineRef = useRef<MineradioEngine | null>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
+  const currentQueueItemRef = useRef<HTMLDivElement>(null)
 
   const [engineReady, setEngineReady] = useState(false)
   const [, setFxVersion] = useState(0)
@@ -301,13 +303,22 @@ export default function MineradioFullPlayer() {
   const handleQueueSongClick = (index: number) => {
     const song = playlist[index]
     if (!song) return
-    if (currentSong && song.id === currentSong.id && song.platform === currentSong.platform) {
+    if (isSamePlayableSong(currentSong, song)) {
       usePlayerStore.getState().togglePlay()
       return
     }
     void usePlayerStore.getState().playSong(song, playlist)
   }
 
+  const handleLocateCurrentSong = () => {
+    const item = currentQueueItemRef.current
+    if (!item) return
+    item.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+
+  const currentQueueSongIndex = currentSong
+    ? playlist.findIndex((song) => isSamePlayableSong(currentSong, song))
+    : -1
   const queueSourceLabel = resolvePlaylistSourceLabel(playlistId, playlistName)
   const engineState = engineReady && engineRef.current ? engineRef.current.getState() : null
 
@@ -368,21 +379,37 @@ export default function MineradioFullPlayer() {
                   {queueSourceLabel ? ` · 来自 ${queueSourceLabel}` : ''}
                 </div>
               </div>
-              <button
-                className="fx-mini-btn ghost"
-                style={{ height: 26, padding: '0 9px', fontSize: 13 }}
-                onClick={() => setMiniQueueOpen(false)}
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {playlist.length > 0 && (
+                  <button
+                    type="button"
+                    className="fx-mini-btn ghost"
+                    style={{ height: 26, width: 26, padding: 0, fontSize: 13 }}
+                    title="定位到当前播放"
+                    aria-label="定位到当前播放"
+                    disabled={currentQueueSongIndex < 0}
+                    onClick={handleLocateCurrentSong}
+                  >
+                    <LocateFixed className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  className="fx-mini-btn ghost"
+                  style={{ height: 26, padding: '0 9px', fontSize: 13 }}
+                  onClick={() => setMiniQueueOpen(false)}
+                >
+                  ×
+                </button>
+              </div>
             </div>
             <div id="mini-queue-list" className="mini-queue-list">
               {playlist.length === 0 && <div className="mini-queue-empty">队列为空</div>}
               {playlist.map((song, index) => {
-                const isCurrent = currentSong?.id === song.id && currentSong?.platform === song.platform
+                const isCurrent = isSamePlayableSong(currentSong, song)
                 return (
                   <div
                     key={`${song.platform}-${song.id}-${index}`}
+                    ref={isCurrent ? currentQueueItemRef : undefined}
                     className={cn('mini-queue-item', isCurrent && 'now')}
                     onClick={() => handleQueueSongClick(index)}
                   >
