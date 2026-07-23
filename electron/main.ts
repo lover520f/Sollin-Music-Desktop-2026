@@ -30,8 +30,12 @@ import {
   AsfTag,
   ApeTag,
 } from 'node-taglib-sharp'
+import { flushPendingWrites, initializeSollinDataRoot, setupAppDataStoreIpc } from './appDataStore'
 import { setupLxSourceIpcHandlers, initializeLxSourceRuntime, disposeLxSourceRuntime } from './lxSourceRuntime'
 import { initializeDataSyncRuntime, disposeDataSyncRuntime, setupDataSyncIpcHandlers } from './dataSync'
+
+// Redirect all Electron/Chromium userData under ~/.sollin before any getPath('userData').
+initializeSollinDataRoot()
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -3402,6 +3406,7 @@ const decodeKrcLyricPayload = async(data: string) => {
 
 // IPC Handlers
 function setupIpcHandlers() {
+  setupAppDataStoreIpc()
   setupLxSourceIpcHandlers()
   setupDataSyncIpcHandlers()
   // Window controls
@@ -3919,6 +3924,7 @@ app.on('before-quit', () => {
   void disposeDataSyncRuntime()
   // Persist the current enabled state one last time.
   flushDesktopLyricsState()
+  flushPendingWrites()
 })
 
 app.on('window-all-closed', () => {

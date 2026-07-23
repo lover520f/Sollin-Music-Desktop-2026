@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { createAppPersistStorage } from '@/services/persistentStorage'
 
 export type DownloadTaskStatus = 'pending' | 'downloading' | 'completed' | 'failed'
 export type DownloadFileNamePart = 'artist' | 'album' | 'title'
@@ -152,7 +153,8 @@ export const useDownloadStore = create<DownloadStore>()(
       })),
     }),
     {
-      name: 'download-storage',
+      name: 'download',
+      storage: createAppPersistStorage('download'),
       partialize: (state) => ({
         defaultDownloadDirectory: state.defaultDownloadDirectory,
         downloadDirectory: state.downloadDirectory,

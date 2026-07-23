@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Playlist, Song, OnlinePlaylist } from '@/types'
+import { createAppPersistStorage } from '@/services/persistentStorage'
 import {
   isGatewayCoverUrl,
   preparePlaylistForLibrary,
@@ -698,7 +699,8 @@ export const useUserStore = create<UserStore>()(
       }
     },
     {
-      name: 'Sollin-user-data',
+      name: 'user',
+      storage: createAppPersistStorage('user'),
     }
   )
 )

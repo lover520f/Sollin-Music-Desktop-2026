@@ -190,6 +190,15 @@ const electronAPI = {
   getGlobalShortcutState: () => ipcRenderer.invoke('global-shortcuts:get-state'),
   setGlobalShortcutConfig: (config: GlobalShortcutConfig) => ipcRenderer.invoke('global-shortcuts:set-config', config),
 
+  // Persistent app data store (~/.sollin/store)
+  storeGet: (name: string) => ipcRenderer.invoke('store:get', name) as Promise<unknown | null>,
+  storeSet: (name: string, value: unknown) => ipcRenderer.invoke('store:set', name, value) as Promise<{ ok: boolean; error?: string }>,
+  storeRemove: (name: string) => ipcRenderer.invoke('store:remove', name) as Promise<{ ok: boolean; error?: string }>,
+  storeGetMany: (names: string[]) => ipcRenderer.invoke('store:getMany', names) as Promise<Record<string, unknown | null>>,
+  storeFlush: () => ipcRenderer.invoke('store:flush') as Promise<{ ok: boolean }>,
+  storeGetRootPath: () => ipcRenderer.invoke('store:getRootPath') as Promise<string>,
+  storeOpenRootPath: () => ipcRenderer.invoke('store:openRootPath') as Promise<string>,
+
   updatePlayerInfo: (info: { title: string; artist: string }) => {
     ipcRenderer.send('player:update-info', info)
   },
@@ -367,6 +376,13 @@ declare global {
       isMaximized: () => Promise<boolean>
       getPlatform: () => Promise<NodeJS.Platform>
       getVersion: () => Promise<string>
+      storeGet: (name: string) => Promise<unknown | null>
+      storeSet: (name: string, value: unknown) => Promise<{ ok: boolean; error?: string }>
+      storeRemove: (name: string) => Promise<{ ok: boolean; error?: string }>
+      storeGetMany: (names: string[]) => Promise<Record<string, unknown | null>>
+      storeFlush: () => Promise<{ ok: boolean }>
+      storeGetRootPath: () => Promise<string>
+      storeOpenRootPath: () => Promise<string>
       getGlobalShortcutState: () => Promise<GlobalShortcutState>
       setGlobalShortcutConfig: (config: GlobalShortcutConfig) => Promise<GlobalShortcutState>
       updatePlayerInfo: (info: { title: string; artist: string }) => void

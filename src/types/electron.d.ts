@@ -13,6 +13,13 @@ declare global {
       isMaximized: () => Promise<boolean>
       getPlatform: () => Promise<string>
       getVersion: () => Promise<string>
+      storeGet: (name: string) => Promise<unknown | null>
+      storeSet: (name: string, value: unknown) => Promise<{ ok: boolean; error?: string }>
+      storeRemove: (name: string) => Promise<{ ok: boolean; error?: string }>
+      storeGetMany: (names: string[]) => Promise<Record<string, unknown | null>>
+      storeFlush: () => Promise<{ ok: boolean }>
+      storeGetRootPath: () => Promise<string>
+      storeOpenRootPath: () => Promise<string>
       getGlobalShortcutState: () => Promise<{
         config: {
           playPause: string | null

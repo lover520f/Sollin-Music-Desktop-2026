@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { PersistStorage } from 'zustand/middleware'
 import type { Song, PlayMode, AudioQuality, Platform, SongPlatform, LyricData, AudioEffectsState } from '@/types'
+import { createAppPersistStorage } from '@/services/persistentStorage'
 import { QUALITY_NAMES } from '@/constants/audio'
 import api from '@/services/api'
 import { lxSourceApi } from '@/services/lxSource'
@@ -28,68 +28,6 @@ import {
   resumeAudioEffectsEngine,
   setAudioEffectsOutputDevice,
 } from '@/utils/audioEffects'
-
-async function safePlayerStorageGet(name: string): Promise<string | null> {
-  try {
-    return window.localStorage?.getItem(name) ?? null
-  } catch {
-    return null
-  }
-}
-
-// Debounced storage write: hold the latest snapshot and serialize once when
-// the timer fires, instead of stringifying the whole playlist on every set().
-let pendingWrite: { name: string; value: unknown } | null = null
-let writeTimer: ReturnType<typeof setTimeout> | null = null
-let lastWrittenValue: string | null = null
-const PERSIST_DEBOUNCE_MS = 2000
-
-function writePendingPlayerStorage(): void {
-  if (!pendingWrite) return
-  const { name, value } = pendingWrite
-  pendingWrite = null
-  try {
-    const serialized = JSON.stringify(value)
-    // Skip the synchronous localStorage write when nothing persisted changed
-    // (e.g. the set() only touched runtime-only fields outside partialize).
-    if (serialized === lastWrittenValue) return
-    lastWrittenValue = serialized
-    window.localStorage?.setItem(name, serialized)
-  } catch {
-    // ignore
-  }
-}
-
-function debouncedPlayerStorageSet(name: string, value: unknown): void {
-  pendingWrite = { name, value }
-  if (writeTimer) clearTimeout(writeTimer)
-  writeTimer = setTimeout(() => {
-    writeTimer = null
-    writePendingPlayerStorage()
-  }, PERSIST_DEBOUNCE_MS)
-}
-
-// Flush pending writes immediately (called on beforeunload)
-function flushPendingPlayerStorage() {
-  if (writeTimer) {
-    clearTimeout(writeTimer)
-    writeTimer = null
-  }
-  writePendingPlayerStorage()
-}
-
-// Ensure pending writes are flushed on page unload
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', flushPendingPlayerStorage)
-}
-
-async function safePlayerStorageRemove(name: string): Promise<void> {
-  try {
-    window.localStorage?.removeItem(name)
-  } catch {
-    // ignore
-  }
-}
 
 // Apply a persisted audio output device to the live <audio> element without going through the
 // user-initiated setAudioOutputDevice action.  That action short-circuits when the stored id
@@ -136,28 +74,6 @@ const partializePlayerState = (state: PlayerStore) => ({
   playlist: state.playlist.map(stripSongRuntimeFields),
   currentSong: state.currentSong ? stripSongRuntimeFields(state.currentSong) : null,
 })
-
-type PersistedPlayerSnapshot = ReturnType<typeof partializePlayerState>
-
-// Custom PersistStorage (not createJSONStorage): JSON.stringify happens in the
-// debounced writer above, not synchronously on every set().
-const playerPersistStorage: PersistStorage<PersistedPlayerSnapshot> = {
-  getItem: async (name) => {
-    const raw = await safePlayerStorageGet(name)
-    if (!raw) return null
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return null
-    }
-  },
-  setItem: (name, value) => {
-    debouncedPlayerStorageSet(name, value)
-  },
-  removeItem: (name) => {
-    void safePlayerStorageRemove(name)
-  },
-}
 
 function isSameSong(a: Song, b: Song): boolean {
   return isSamePlayableSong(a, b)
@@ -2410,8 +2326,8 @@ export const usePlayerStore = create<PlayerStore>()(
     }
     },
     {
-      name: 'player-storage',
-      storage: playerPersistStorage,
+      name: 'player',
+      storage: createAppPersistStorage('player'),
       partialize: partializePlayerState,
       onRehydrateStorage: () => {
         console.log('[PlayerStore] Starting hydration...')

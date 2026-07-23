@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { parseDislikeRules } from '@/services/dislikeRules'
+import { createAppPersistStorage } from '@/services/persistentStorage'
 
 const SEARCH_HISTORY_LIMIT = 20
 
@@ -57,8 +58,9 @@ export const useFeatureStore = create<FeatureStore>()(
       clearSearchHistory: () => set({ searchHistory: [] }),
     }),
     {
-      name: 'Sollin-feature-settings',
+      name: 'feature',
       version: 1,
+      storage: createAppPersistStorage('feature'),
     },
   ),
 )

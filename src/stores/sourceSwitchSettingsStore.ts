@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { createAppPersistStorage } from '@/services/persistentStorage'
 import type { Platform } from '@/types'
 
 // Structured preferences for the automatic source-switch pipeline.  Persisted separately from
@@ -191,9 +192,9 @@ export const useSourceSwitchSettingsStore = create<SourceSwitchSettingsState>()(
       }),
     }),
     {
-      name: 'sollin.sourceSwitchSettings',
+      name: 'source-switch',
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      storage: createAppPersistStorage('source-switch'),
       partialize: (state) => ({
         enabled: state.enabled,
         rememberToggleChoices: state.rememberToggleChoices,

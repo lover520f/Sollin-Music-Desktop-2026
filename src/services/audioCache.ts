@@ -3,10 +3,13 @@
  * Caches played audio files using IndexedDB for offline playback
  */
 
+import { readAppDoc, writeAppDoc } from '@/services/persistentStorage'
+
 const DB_NAME = 'sollin-audio-cache'
 const DB_VERSION = 1
 const STORE_NAME = 'audio-files'
 const META_STORE_NAME = 'cache-meta'
+const AUDIO_CACHE_SETTINGS_DOC = 'audio-cache-settings'
 const AUDIO_CACHE_SETTINGS_KEY = 'sollin-audio-cache-settings-v1'
 
 export interface AudioCacheSettings {
@@ -43,34 +46,50 @@ interface CacheMeta {
 class AudioCacheService {
   private db: IDBDatabase | null = null
   private dbReady: Promise<void>
-  private settings: AudioCacheSettings = this.loadSettings()
+  private settings: AudioCacheSettings = { ...DEFAULT_AUDIO_CACHE_SETTINGS }
 
   constructor() {
     this.dbReady = this.initDB()
+    void this.loadSettingsAsync()
   }
 
-  private loadSettings(): AudioCacheSettings {
+  private async loadSettingsAsync() {
     try {
-      const raw = localStorage.getItem(AUDIO_CACHE_SETTINGS_KEY)
-      if (!raw) return { ...DEFAULT_AUDIO_CACHE_SETTINGS }
-      const parsed = JSON.parse(raw) as Partial<AudioCacheSettings>
-      return {
-        enabled: parsed.enabled !== false,
-        maxSizeMB: Number.isFinite(parsed.maxSizeMB) && Number(parsed.maxSizeMB) > 0
-          ? Number(parsed.maxSizeMB)
-          : DEFAULT_AUDIO_CACHE_SETTINGS.maxSizeMB,
+      const fromStore = await readAppDoc<Partial<AudioCacheSettings>>(AUDIO_CACHE_SETTINGS_DOC)
+      if (fromStore) {
+        this.settings = {
+          enabled: fromStore.enabled !== false,
+          maxSizeMB: Number.isFinite(fromStore.maxSizeMB) && Number(fromStore.maxSizeMB) > 0
+            ? Number(fromStore.maxSizeMB)
+            : DEFAULT_AUDIO_CACHE_SETTINGS.maxSizeMB,
+        }
+        return
       }
-    } catch {
-      return { ...DEFAULT_AUDIO_CACHE_SETTINGS }
+
+      // One-shot legacy localStorage settings
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(AUDIO_CACHE_SETTINGS_KEY) : null
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<AudioCacheSettings>
+        this.settings = {
+          enabled: parsed.enabled !== false,
+          maxSizeMB: Number.isFinite(parsed.maxSizeMB) && Number(parsed.maxSizeMB) > 0
+            ? Number(parsed.maxSizeMB)
+            : DEFAULT_AUDIO_CACHE_SETTINGS.maxSizeMB,
+        }
+        await writeAppDoc(AUDIO_CACHE_SETTINGS_DOC, this.settings)
+        try {
+          localStorage.removeItem(AUDIO_CACHE_SETTINGS_KEY)
+        } catch {
+          // ignore
+        }
+      }
+    } catch (error) {
+      console.error('[audioCache] load settings failed:', error)
     }
   }
 
   private persistSettings() {
-    try {
-      localStorage.setItem(AUDIO_CACHE_SETTINGS_KEY, JSON.stringify(this.settings))
-    } catch {
-      // ignore
-    }
+    void writeAppDoc(AUDIO_CACHE_SETTINGS_DOC, this.settings)
   }
 
   getSettings(): AudioCacheSettings {

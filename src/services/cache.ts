@@ -1,6 +1,11 @@
 /**
  * 缓存服务 - 用于缓存 API 数据减少加载时间
+ *
+ * Data entries live in memory only (avoids localStorage quota fights with settings).
+ * Settings are small and still persisted via app store / localStorage fallback.
  */
+
+import { readAppDoc, writeAppDoc } from '@/services/persistentStorage'
 
 interface CacheItem<T> {
   data: T
@@ -13,8 +18,7 @@ export interface DataCacheSettings {
   maxSizeMB: number
 }
 
-const CACHE_PREFIX = 'sollin-cache-'
-const CACHE_SETTINGS_KEY = 'sollin-cache-settings-v1'
+const CACHE_SETTINGS_DOC = 'cache-settings'
 const DEFAULT_DATA_CACHE_SETTINGS: DataCacheSettings = {
   enabled: true,
   maxSizeMB: 32,
@@ -38,32 +42,55 @@ const DEFAULT_EXPIRY = {
   songHotComments: 10 * 60 * 1000,      // 热门评论: 10分钟
 }
 
+function normalizeSettings(raw: Partial<DataCacheSettings> | null | undefined): DataCacheSettings {
+  return {
+    enabled: raw?.enabled !== false,
+    maxSizeMB: Number.isFinite(raw?.maxSizeMB) && Number(raw?.maxSizeMB) > 0
+      ? Number(raw?.maxSizeMB)
+      : DEFAULT_DATA_CACHE_SETTINGS.maxSizeMB,
+  }
+}
+
 class CacheService {
   private memoryCache: Map<string, CacheItem<any>> = new Map()
-  private settings: DataCacheSettings = this.loadSettings()
+  private settings: DataCacheSettings = { ...DEFAULT_DATA_CACHE_SETTINGS }
+  private settingsLoaded = false
 
-  private loadSettings(): DataCacheSettings {
+  constructor() {
+    void this.loadSettingsAsync()
+  }
+
+  private async loadSettingsAsync() {
     try {
-      const raw = localStorage.getItem(CACHE_SETTINGS_KEY)
-      if (!raw) return { ...DEFAULT_DATA_CACHE_SETTINGS }
-      const parsed = JSON.parse(raw) as Partial<DataCacheSettings>
-      return {
-        enabled: parsed.enabled !== false,
-        maxSizeMB: Number.isFinite(parsed.maxSizeMB) && Number(parsed.maxSizeMB) > 0
-          ? Number(parsed.maxSizeMB)
-          : DEFAULT_DATA_CACHE_SETTINGS.maxSizeMB,
+      const fromStore = await readAppDoc<Partial<DataCacheSettings>>(CACHE_SETTINGS_DOC)
+      if (fromStore) {
+        this.settings = normalizeSettings(fromStore)
+        this.settingsLoaded = true
+        return
       }
-    } catch {
-      return { ...DEFAULT_DATA_CACHE_SETTINGS }
+
+      // One-shot legacy localStorage settings
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const legacy = window.localStorage.getItem('sollin-cache-settings-v1')
+        if (legacy) {
+          try {
+            this.settings = normalizeSettings(JSON.parse(legacy))
+            await writeAppDoc(CACHE_SETTINGS_DOC, this.settings)
+            window.localStorage.removeItem('sollin-cache-settings-v1')
+          } catch {
+            // ignore bad legacy payload
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[cache] load settings failed:', error)
+    } finally {
+      this.settingsLoaded = true
     }
   }
 
   private persistSettings(): void {
-    try {
-      localStorage.setItem(CACHE_SETTINGS_KEY, JSON.stringify(this.settings))
-    } catch {
-      // ignore persistence failure
-    }
+    void writeAppDoc(CACHE_SETTINGS_DOC, this.settings)
   }
 
   getSettings(): DataCacheSettings {
@@ -94,69 +121,43 @@ class CacheService {
    * 生成缓存键
    */
   private getKey(type: string, ...args: (string | number)[]): string {
-    return `${CACHE_PREFIX}${type}-${args.join('-')}`
+    return `${type}-${args.join('-')}`
   }
 
   /**
-   * 从缓存获取数据
+   * 从缓存获取数据（仅内存）
    */
   get<T>(type: string, ...args: (string | number)[]): T | null {
     if (!this.settings.enabled) return null
     const key = this.getKey(type, ...args)
-    
-    // 先检查内存缓存
+
     const memoryItem = this.memoryCache.get(key)
     if (memoryItem && Date.now() < memoryItem.timestamp + memoryItem.expiry) {
       return memoryItem.data as T
     }
-    
-    // 再检查 localStorage
-    try {
-      const stored = localStorage.getItem(key)
-      if (stored) {
-        const item: CacheItem<T> = JSON.parse(stored)
-        if (Date.now() < item.timestamp + item.expiry) {
-          // 更新内存缓存
-          this.memoryCache.set(key, item)
-          return item.data
-        } else {
-          // 过期了，删除
-          localStorage.removeItem(key)
-        }
-      }
-    } catch (e) {
-      console.error('Cache read error:', e)
+    if (memoryItem) {
+      this.memoryCache.delete(key)
     }
-    
+
     return null
   }
 
   /**
-   * 设置缓存
+   * 设置缓存（仅内存）
    */
   set<T>(type: string, data: T, expiry?: number, ...args: (string | number)[]): void {
     if (!this.settings.enabled) return
     const key = this.getKey(type, ...args)
     const defaultExpiry = DEFAULT_EXPIRY[type as keyof typeof DEFAULT_EXPIRY] || 5 * 60 * 1000
-    
+
     const item: CacheItem<T> = {
       data,
       timestamp: Date.now(),
       expiry: expiry || defaultExpiry,
     }
-    
-    // 更新内存缓存
+
     this.memoryCache.set(key, item)
-    
-    // 更新 localStorage
-    try {
-      localStorage.setItem(key, JSON.stringify(item))
-      this.enforceLimits()
-    } catch (e) {
-      console.error('Cache write error:', e)
-      // 如果 localStorage 满了，清理旧缓存
-      this.cleanup()
-    }
+    this.enforceLimits()
   }
 
   /**
@@ -165,7 +166,6 @@ class CacheService {
   remove(type: string, ...args: (string | number)[]): void {
     const key = this.getKey(type, ...args)
     this.memoryCache.delete(key)
-    localStorage.removeItem(key)
   }
 
   /**
@@ -173,59 +173,19 @@ class CacheService {
    */
   cleanup(): void {
     const now = Date.now()
-    
-    // 清理内存缓存
     for (const [key, item] of this.memoryCache.entries()) {
       if (now >= item.timestamp + item.expiry) {
         this.memoryCache.delete(key)
       }
     }
-    
-    // 清理 localStorage
-    const keysToRemove: string[] = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key?.startsWith(CACHE_PREFIX)) {
-        try {
-          const stored = localStorage.getItem(key)
-          if (stored) {
-            const item: CacheItem<any> = JSON.parse(stored)
-            if (now >= item.timestamp + item.expiry) {
-              keysToRemove.push(key)
-            }
-          }
-        } catch {
-          keysToRemove.push(key)
-        }
-      }
-    }
-    
-    keysToRemove.forEach(key => localStorage.removeItem(key))
   }
 
-  private getCacheEntries(): Array<{ key: string; size: number; timestamp: number }> {
-    const entries: Array<{ key: string; size: number; timestamp: number }> = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (!key?.startsWith(CACHE_PREFIX)) continue
-      const value = localStorage.getItem(key)
-      if (!value) continue
-      try {
-        const item: CacheItem<any> = JSON.parse(value)
-        entries.push({
-          key,
-          size: key.length + value.length,
-          timestamp: item.timestamp || 0,
-        })
-      } catch {
-        entries.push({
-          key,
-          size: key.length + value.length,
-          timestamp: 0,
-        })
-      }
+  private estimateEntrySize(item: CacheItem<any>): number {
+    try {
+      return JSON.stringify(item.data).length
+    } catch {
+      return 1024
     }
-    return entries
   }
 
   enforceLimits(): void {
@@ -236,13 +196,18 @@ class CacheService {
 
     this.cleanup()
     const maxBytes = this.settings.maxSizeMB * 1024 * 1024
-    let entries = this.getCacheEntries()
-    let totalSize = entries.reduce((sum, item) => sum + item.size, 0)
+    type Entry = { key: string; size: number; timestamp: number }
+    const entries: Entry[] = []
+    let totalSize = 0
+    for (const [key, item] of this.memoryCache.entries()) {
+      const size = this.estimateEntrySize(item)
+      totalSize += size
+      entries.push({ key, size, timestamp: item.timestamp || 0 })
+    }
     if (totalSize <= maxBytes) return
 
-    entries = entries.sort((left, right) => left.timestamp - right.timestamp)
+    entries.sort((left, right) => left.timestamp - right.timestamp)
     for (const entry of entries) {
-      localStorage.removeItem(entry.key)
       this.memoryCache.delete(entry.key)
       totalSize -= entry.size
       if (totalSize <= maxBytes) break
@@ -254,16 +219,18 @@ class CacheService {
    */
   clearAll(): void {
     this.memoryCache.clear()
-    
-    const keysToRemove: string[] = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key?.startsWith(CACHE_PREFIX)) {
-        keysToRemove.push(key)
+    // Best-effort: drop any leftover legacy localStorage cache keys from older builds
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key?.startsWith('sollin-cache-')) keysToRemove.push(key)
       }
+      keysToRemove.forEach((key) => localStorage.removeItem(key))
+    } catch {
+      // ignore
     }
-    
-    keysToRemove.forEach(key => localStorage.removeItem(key))
   }
 
   /**
@@ -274,13 +241,22 @@ class CacheService {
   }
 
   getCacheSizeBytes(): number {
-    return this.getCacheEntries().reduce((sum, item) => sum + item.size, 0)
+    let total = 0
+    for (const item of this.memoryCache.values()) {
+      total += this.estimateEntrySize(item)
+    }
+    return total
   }
 
   formatSize(size: number): string {
     if (size < 1024) return `${size} B`
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-    return `${(size / 1024 / 1024).toFixed(1)} MB`
+    return `${(size / (1024 * 1024)).toFixed(2)} MB`
+  }
+
+  /** @internal diagnostics */
+  isSettingsLoaded(): boolean {
+    return this.settingsLoaded
   }
 }
 

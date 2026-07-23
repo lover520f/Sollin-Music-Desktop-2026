@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { LyricsPlayerMode, Platform, Song } from '@/types'
 import { persist } from 'zustand/middleware'
 import { isLyricsPlayerMode } from '@/constants/playerModes'
+import { createAppPersistStorage } from '@/services/persistentStorage'
 
 type Theme = 'light' | 'dark' | 'system'
 type SearchCategory = 'songs' | 'albums' | 'playlists'
@@ -409,8 +410,9 @@ export const useUIStore = create<UIStore>()(
       },
     }),
     {
-      name: 'ui-storage',
+      name: 'ui',
       version: 9,
+      storage: createAppPersistStorage('ui'),
       migrate: (persistedState: any, version: number) => {
         if (persistedState?.state) {
           const legacyKeys = ['api' + 'BaseUrl', 'show' + 'Unified' + 'AuthModal']

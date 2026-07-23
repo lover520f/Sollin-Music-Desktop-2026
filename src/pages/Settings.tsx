@@ -4506,6 +4506,26 @@ export default function Settings() {
             <p className="font-medium">开发者</p>
             <p className="text-[var(--text-muted)]">Leguan ❤️</p>
           </div>
+          {typeof window !== 'undefined' && window.electronAPI?.storeOpenRootPath && (
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-2">
+              <p className="text-sm text-[var(--text-muted)]">
+                应用数据目录（设置、歌单、音源脚本等）
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void window.electronAPI?.storeOpenRootPath?.().catch((error) => {
+                    console.error('Open data directory failed:', error)
+                    addToast({ type: 'error', message: '无法打开数据目录' })
+                  })
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              >
+                <FolderOpen className="w-4 h-4" />
+                打开数据目录（~/.sollin）
+              </button>
+            </div>
+          )}
           <p className="text-xs text-[var(--text-muted)] pt-2">© 2025 Sollin. 所有数据保存在本地。</p>
         </div>
       </section>

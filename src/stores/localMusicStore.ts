@@ -1,14 +1,8 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
-import localforage from 'localforage'
+import { persist } from 'zustand/middleware'
 import type { Song } from '@/types'
 import { useUIStore } from '@/stores/uiStore'
-
-const localMusicStorage = localforage.createInstance({
-  name: 'Sollin',
-  storeName: 'Sollin_local_music_store',
-  description: 'Sollin local music library',
-})
+import { createAppPersistStorage } from '@/services/persistentStorage'
 
 export type LocalMusicTagPriority = 'embedded-first' | 'external-first'
 
@@ -172,19 +166,8 @@ export const useLocalMusicStore = create<LocalMusicStore>()(
       }
     },
     {
-      name: 'local-music-storage',
-      storage: createJSONStorage(() => ({
-        getItem: async(name) => {
-          const value = await localMusicStorage.getItem<string>(name)
-          return value ?? null
-        },
-        setItem: async(name, value) => {
-          await localMusicStorage.setItem(name, value)
-        },
-        removeItem: async(name) => {
-          await localMusicStorage.removeItem(name)
-        },
-      })),
+      name: 'local-music',
+      storage: createAppPersistStorage('local-music'),
       partialize: (state) => ({
         folders: state.folders,
         songs: state.songs,

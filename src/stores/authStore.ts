@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import neteaseAuthApi from '@/services/neteaseAuth'
+import { createAppPersistStorage } from '@/services/persistentStorage'
 
 // Login types
 export type LoginType = 'qr' | 'cookie' | null
@@ -165,7 +166,8 @@ export const useAuthStore = create<AuthStore>()(
             },
         }),
         {
-            name: 'sollin-auth',
+            name: 'auth',
+            storage: createAppPersistStorage('auth'),
             onRehydrateStorage: () => {
                 return (state) => {
                     // Restore cookie in crypto module from persisted state

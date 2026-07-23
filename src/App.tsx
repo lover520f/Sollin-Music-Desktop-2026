@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import Layout from '@/components/Layout'
-import { MAX_PRELOAD_SONG_COUNT, usePlayerStore } from '@/stores/playerStore'
+import { usePlayerStore } from '@/stores/playerStore'
 import { useUserStore } from '@/stores/userStore'
 import { applyGlobalFontSize, useUIStore } from '@/stores/uiStore'
 import CreatePlaylistModal from '@/components/modals/CreatePlaylistModal'
@@ -55,12 +55,6 @@ const ArtistDetail = lazy(() => import('@/pages/ArtistDetail'))
 const AlbumDetail = lazy(() => import('@/pages/AlbumDetail'))
 const PlaylistExplore = lazy(() => import('@/pages/PlaylistExplore'))
 const DailyRecommend = lazy(() => import('@/pages/DailyRecommend'))
-
-const normalizePreloadSongCount = (value: unknown) => {
-  const numericValue = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(numericValue)) return 0
-  return Math.max(0, Math.min(MAX_PRELOAD_SONG_COUNT, Math.round(numericValue)))
-}
 
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -257,81 +251,7 @@ function App() {
     }
   }, [])
 
-  // Electron: restore player state from main-process persistent storage
-  useEffect(() => {
-    if (!window.electronAPI?.getPlayerState) return
-
-    let cancelled = false
-    window.electronAPI.getPlayerState().then((state) => {
-      if (cancelled || !state) return
-
-      const current = usePlayerStore.getState()
-      // Only restore if store is currently empty (avoid overriding a live session)
-      if (current.playlist.length === 0 && !current.currentSong) {
-        usePlayerStore.setState({
-          playlist: Array.isArray(state.playlist) ? state.playlist : [],
-          playlistId: state.playlistId ?? null,
-          currentSong: state.currentSong ?? null,
-          volume: typeof state.volume === 'number' ? state.volume : current.volume,
-          playMode: (state.playMode as any) ?? current.playMode,
-          quality: (state.quality as any) ?? current.quality,
-          preloadSongCount: state.preloadSongCount == null
-            ? current.preloadSongCount
-            : normalizePreloadSongCount(state.preloadSongCount),
-        })
-      }
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // Electron: persist player state to main process (throttled)
-  useEffect(() => {
-    if (!window.electronAPI?.setPlayerState) return
-
-    let timer: number | null = null
-    const save = () => {
-      const state = usePlayerStore.getState()
-      // Strip runtime URLs (they can expire)
-      const strip = (song: any) => {
-        if (!song || typeof song !== 'object') return song
-        const { url, ...rest } = song
-        return rest
-      }
-
-      window.electronAPI?.setPlayerState({
-        playlist: state.playlist.map(strip),
-        playlistId: state.playlistId,
-        currentSong: state.currentSong ? strip(state.currentSong) : null,
-        volume: state.volume,
-        playMode: state.playMode,
-        quality: state.quality,
-        preloadSongCount: state.preloadSongCount,
-      })
-    }
-
-    // Only persist when relevant fields change (not on every isPlaying/isLoading toggle)
-    let lastSerialized = ''
-    const unsubscribe = usePlayerStore.subscribe(() => {
-      const state = usePlayerStore.getState()
-      const key = `${state.playlistId}|${state.volume}|${state.playMode}|${state.quality}|${state.preloadSongCount}|${state.currentSong?.id}|${state.playlist.length}`
-      if (key === lastSerialized) return
-      lastSerialized = key
-      if (timer) window.clearTimeout(timer)
-      timer = window.setTimeout(save, 1500)
-    })
-
-    const onUnload = () => save()
-    window.addEventListener('beforeunload', onUnload)
-
-    return () => {
-      unsubscribe()
-      if (timer) window.clearTimeout(timer)
-      window.removeEventListener('beforeunload', onUnload)
-    }
-  }, [])
+  // Player prefs/playlist are persisted via zustand → ~/.sollin/store/player.json (no dual-write).
 
   // Check for updates from GitHub Releases.
   const checkForUpdates = async () => {
