@@ -52,7 +52,14 @@ import PlaybackQualityMenu from '@/components/player/PlaybackQualityMenu'
 import PlaybackRateMenu from '@/components/player/PlaybackRateMenu'
 import { PLAYER_MODE_OPTIONS } from '@/constants/playerModes'
 import { useCoverBackdrop, resolveBackgroundTheme, type ResolvedBackground } from '@/hooks/useCoverBackdrop'
-import { EQ_FREQUENCIES, EQ_PRESETS, REVERB_PRESETS } from '@/utils/audioEffects'
+import {
+  EQ_FREQUENCIES,
+  EQ_PRESETS,
+  LOUDNESS_TARGET_DB_DEFAULT,
+  LOUDNESS_TARGET_DB_MAX,
+  LOUDNESS_TARGET_DB_MIN,
+  REVERB_PRESETS,
+} from '@/utils/audioEffects'
 import { isSamePlayableSong } from '@/utils/songIdentity'
 
 type LyricsToneMode = 'dark' | 'light'
@@ -1219,6 +1226,47 @@ function LyricsPanel({
             </div>
 
             <div className="mt-4 max-h-[calc(min(78vh,780px)-4.5rem)] space-y-3 overflow-y-auto pr-1">
+              <div className={tuningCardClass}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">响度均衡</p>
+                    <p className={cn('mt-1 text-xs', textMutedClass)}>统一不同歌曲的听感音量（ReplayGain + 实时补偿）。</p>
+                  </div>
+                  <button
+                    onClick={() => usePlayerStore.getState().setLoudnessEqEnabled(!audioEffects.loudnessEqEnabled)}
+                    className={cn(
+                      'rounded-full px-3 py-1.5 text-xs transition-colors',
+                      audioEffects.loudnessEqEnabled ? switchOnClass : switchOffClass
+                    )}
+                  >
+                    {audioEffects.loudnessEqEnabled ? '已开启' : '已关闭'}
+                  </button>
+                </div>
+                <label className="mt-3 block">
+                  <div className={cn('flex items-center justify-between text-xs', textMutedClass)}>
+                    <span>目标响度</span>
+                    <span>
+                      {audioEffects.loudnessTargetDb} dB
+                      {audioEffects.loudnessTargetDb === LOUDNESS_TARGET_DB_DEFAULT ? '（默认）' : ''}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={LOUDNESS_TARGET_DB_MIN}
+                    max={LOUDNESS_TARGET_DB_MAX}
+                    step={1}
+                    value={audioEffects.loudnessTargetDb}
+                    onChange={(event) => usePlayerStore.getState().setLoudnessTargetDb(Number(event.target.value))}
+                    className="mt-2 w-full accent-primary-500"
+                    aria-label="响度均衡目标电平"
+                  />
+                  <div className={cn('mt-1.5 flex items-center justify-between text-[11px]', textMutedClass)}>
+                    <span>更安静</span>
+                    <span>更响亮</span>
+                  </div>
+                </label>
+              </div>
+
               <div className={tuningCardClass}>
                 <div className="flex items-center justify-between gap-3">
                   <div>

@@ -31,6 +31,25 @@ export type AudioEffectsSettings = {
   spatialAudioRadius: number
   spatialAudioSpeed: number
   playbackRate: number
+  /** Unify perceived loudness across tracks (ReplayGain + real-time RMS). */
+  loudnessEqEnabled: boolean
+  /**
+   * Target short-term level (dB). Lower = quieter overall balance;
+   * higher = louder. Clamped to LOUDNESS_TARGET_DB_MIN…MAX.
+   */
+  loudnessTargetDb: number
+}
+
+/** Optional ReplayGain fields used by loudness equalization. */
+export type LoudnessReplayGain = {
+  trackGainDb?: number
+  trackPeak?: number
+  albumGainDb?: number
+  albumPeak?: number
+}
+
+export type LoudnessSongLike = {
+  replayGain?: LoudnessReplayGain | null
 }
 
 export const EQ_PRESETS: EqPreset[] = [
@@ -63,7 +82,34 @@ export const DEFAULT_AUDIO_EFFECTS_SETTINGS: AudioEffectsSettings = {
   spatialAudioRadius: 50,
   spatialAudioSpeed: 50,
   playbackRate: 1,
+  loudnessEqEnabled: false,
+  loudnessTargetDb: -14,
 }
+
+/** User-facing target loudness range (dB). Higher = louder overall balance. */
+export const LOUDNESS_TARGET_DB_MIN = -24
+export const LOUDNESS_TARGET_DB_MAX = -8
+export const LOUDNESS_TARGET_DB_DEFAULT = -14
+/** ReplayGain tags are defined relative to ~-18 LUFS; map tags to the user target from this ref. */
+const REPLAYGAIN_REFERENCE_DB = -18
+
+// Compensation range: intentionally wide so quiet vs hot masters are pulled together.
+const LOUDNESS_MIN_LINEAR = 10 ** (-15 / 20)
+const LOUDNESS_MAX_LINEAR = 10 ** (15 / 20)
+const LOUDNESS_METER_INTERVAL_MS = 50
+const LOUDNESS_SMOOTH_TIME_CONSTANT = 0.08
+const LOUDNESS_LOCK_SMOOTH_TIME_CONSTANT = 0.25
+const LOUDNESS_SILENCE_RMS = 0.0015
+// Integrate ~2.5s of non-silent audio before locking per-track gain.
+const LOUDNESS_MEASURE_MS = 2500
+
+export const normalizeLoudnessTargetDb = (value: unknown): number => {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric)) return LOUDNESS_TARGET_DB_DEFAULT
+  return Math.max(LOUDNESS_TARGET_DB_MIN, Math.min(LOUDNESS_TARGET_DB_MAX, Math.round(numeric)))
+}
+
+const targetDbToRms = (targetDb: number) => 10 ** (normalizeLoudnessTargetDb(targetDb) / 20)
 
 type EngineNodes = {
   context: AudioContext
@@ -75,6 +121,7 @@ type EngineNodes = {
   wetInputGain: GainNode
   wetOutputGain: GainNode
   convolver: ConvolverNode
+  loudnessGain: GainNode
   masterGain: GainNode
 }
 
@@ -101,13 +148,80 @@ let passiveAnalyserListeners: PassiveAnalyserListeners | null = null
 let pannerTimer: number | null = null
 let pannerAngle = 0
 const reverbBufferCache = new Map<string, AudioBuffer>()
+let loudnessMeterTimer: number | null = null
+let loudnessMeterActive = false
+let loudnessTimeDomainBuffer: Float32Array<ArrayBuffer> | null = null
+let lastAppliedLoudnessLinear = 1
+// Per-track integration state for untagged / online real-time compensation.
+let loudnessMeasureSumSquares = 0
+let loudnessMeasureSampleFrames = 0
+let loudnessMeasureElapsedMs = 0
+let loudnessLockedLinear: number | null = null
+/** Active target used by the real-time meter (updated when settings change). */
+let activeLoudnessTargetDb = LOUDNESS_TARGET_DB_DEFAULT
 
 const shouldInitAudioEngine = (settings: AudioEffectsSettings) => (
   settings.audioVisualizationEnabled
   || settings.eqEnabled
   || settings.reverbEnabled
   || settings.spatialAudioEnabled
+  || settings.loudnessEqEnabled
 )
+
+const clampLoudnessLinear = (value: number) => (
+  Math.max(LOUDNESS_MIN_LINEAR, Math.min(LOUDNESS_MAX_LINEAR, value))
+)
+
+const dbToLinear = (db: number) => 10 ** (db / 20)
+
+/**
+ * Resolve ReplayGain tags into a linear gain, or null when tags are missing.
+ * Tags are defined relative to ~-18 LUFS; we offset by (userTarget − reference)
+ * so the user-selected target applies to tagged tracks too.
+ */
+export const computeReplayGainLinear = (
+  song?: LoudnessSongLike | null,
+  targetDb: number = LOUDNESS_TARGET_DB_DEFAULT,
+): number | null => {
+  const rg = song?.replayGain
+  if (!rg) return null
+
+  const hasTrack = typeof rg.trackGainDb === 'number' && Number.isFinite(rg.trackGainDb)
+  const hasAlbum = typeof rg.albumGainDb === 'number' && Number.isFinite(rg.albumGainDb)
+  if (!hasTrack && !hasAlbum) return null
+
+  const tagGainDb = hasTrack ? rg.trackGainDb! : rg.albumGainDb!
+  const targetOffsetDb = normalizeLoudnessTargetDb(targetDb) - REPLAYGAIN_REFERENCE_DB
+  const gainDb = tagGainDb + targetOffsetDb
+  let linear = dbToLinear(gainDb)
+
+  const peak = hasTrack
+    ? (typeof rg.trackPeak === 'number' && Number.isFinite(rg.trackPeak) && rg.trackPeak > 0
+      ? rg.trackPeak
+      : (typeof rg.albumPeak === 'number' && Number.isFinite(rg.albumPeak) && rg.albumPeak > 0
+        ? rg.albumPeak
+        : undefined))
+    : (typeof rg.albumPeak === 'number' && Number.isFinite(rg.albumPeak) && rg.albumPeak > 0
+      ? rg.albumPeak
+      : (typeof rg.trackPeak === 'number' && Number.isFinite(rg.trackPeak) && rg.trackPeak > 0
+        ? rg.trackPeak
+        : undefined))
+
+  if (typeof peak === 'number' && peak > 0) {
+    // Leave a tiny headroom so EQ boosts after this stage are less likely to hard-clip.
+    linear = Math.min(linear, 0.95 / peak)
+  }
+
+  // Soft clamp so pathological tags cannot blast the output.
+  return Math.max(0.05, Math.min(LOUDNESS_MAX_LINEAR, linear))
+}
+
+const resetLoudnessMeterState = () => {
+  loudnessMeasureSumSquares = 0
+  loudnessMeasureSampleFrames = 0
+  loudnessMeasureElapsedMs = 0
+  loudnessLockedLinear = null
+}
 
 const disconnectNode = (node: AudioNode) => {
   try {
@@ -259,7 +373,19 @@ const ensurePassiveAnalyser = (audio: HTMLAudioElement) => {
 const rebuildAudioRouting = (settings: AudioEffectsSettings) => {
   if (!engineNodes) return
 
-  const { source, analyser, filters, panner, dryGain, wetInputGain, wetOutputGain, convolver, masterGain, context } = engineNodes
+  const {
+    source,
+    analyser,
+    filters,
+    panner,
+    dryGain,
+    wetInputGain,
+    wetOutputGain,
+    convolver,
+    loudnessGain,
+    masterGain,
+    context,
+  } = engineNodes
 
   disconnectNode(source)
   disconnectNode(analyser)
@@ -269,6 +395,7 @@ const rebuildAudioRouting = (settings: AudioEffectsSettings) => {
   disconnectNode(wetInputGain)
   disconnectNode(wetOutputGain)
   disconnectNode(convolver)
+  disconnectNode(loudnessGain)
   disconnectNode(masterGain)
 
   source.connect(analyser)
@@ -286,6 +413,7 @@ const rebuildAudioRouting = (settings: AudioEffectsSettings) => {
     }
   }
 
+  // FX chain ends at loudnessGain so compensation always sits right before the master.
   if (settings.reverbEnabled) {
     outputTail.connect(dryGain)
     outputTail.connect(wetInputGain)
@@ -295,18 +423,19 @@ const rebuildAudioRouting = (settings: AudioEffectsSettings) => {
     if (settings.spatialAudioEnabled) {
       dryGain.connect(panner)
       wetOutputGain.connect(panner)
-      panner.connect(masterGain)
+      panner.connect(loudnessGain)
     } else {
-      dryGain.connect(masterGain)
-      wetOutputGain.connect(masterGain)
+      dryGain.connect(loudnessGain)
+      wetOutputGain.connect(loudnessGain)
     }
   } else if (settings.spatialAudioEnabled) {
     outputTail.connect(panner)
-    panner.connect(masterGain)
+    panner.connect(loudnessGain)
   } else {
-    outputTail.connect(masterGain)
+    outputTail.connect(loudnessGain)
   }
 
+  loudnessGain.connect(masterGain)
   masterGain.connect(context.destination)
 }
 
@@ -347,14 +476,28 @@ const ensureEngine = (audio: HTMLAudioElement) => {
   const wetInputGain = context.createGain()
   const wetOutputGain = context.createGain()
   const convolver = context.createConvolver()
+  const loudnessGain = context.createGain()
   const masterGain = context.createGain()
 
   dryGain.gain.value = 1
   wetInputGain.gain.value = 0
   wetOutputGain.gain.value = 0
+  loudnessGain.gain.value = lastAppliedLoudnessLinear
   masterGain.gain.value = 1
 
-  engineNodes = { context, source, analyser, filters, panner, dryGain, wetInputGain, wetOutputGain, convolver, masterGain }
+  engineNodes = {
+    context,
+    source,
+    analyser,
+    filters,
+    panner,
+    dryGain,
+    wetInputGain,
+    wetOutputGain,
+    convolver,
+    loudnessGain,
+    masterGain,
+  }
   currentAudioElement = audio
   rebuildAudioRouting(DEFAULT_AUDIO_EFFECTS_SETTINGS)
   return engineNodes
@@ -459,6 +602,177 @@ export const readAudioAnalyserData = (target: Uint8Array) => {
   return target
 }
 
+export const setLoudnessGainLinear = (
+  linear: number,
+  smooth = true,
+  timeConstant = LOUDNESS_SMOOTH_TIME_CONSTANT,
+) => {
+  if (!engineNodes) return
+  const next = Math.max(0.05, Math.min(LOUDNESS_MAX_LINEAR, Number.isFinite(linear) ? linear : 1))
+  lastAppliedLoudnessLinear = next
+  const param = engineNodes.loudnessGain.gain
+  const now = engineNodes.context.currentTime
+  try {
+    param.cancelScheduledValues(now)
+  } catch {
+    // Older Web Audio implementations may throw when nothing is scheduled.
+  }
+  if (smooth) {
+    // Anchor current value so setTargetAtTime doesn't jump from an old scheduled ramp.
+    param.setValueAtTime(param.value, now)
+    param.setTargetAtTime(next, now, timeConstant)
+  } else {
+    param.setValueAtTime(next, now)
+  }
+}
+
+const stopLoudnessMeter = () => {
+  loudnessMeterActive = false
+  if (loudnessMeterTimer != null) {
+    window.clearInterval(loudnessMeterTimer)
+    loudnessMeterTimer = null
+  }
+}
+
+const measureAnalyserRms = () => {
+  if (!engineNodes) return 0
+  const analyser = engineNodes.analyser
+  const length = analyser.fftSize
+  if (!loudnessTimeDomainBuffer || loudnessTimeDomainBuffer.length !== length) {
+    loudnessTimeDomainBuffer = new Float32Array(new ArrayBuffer(length * 4))
+  }
+  analyser.getFloatTimeDomainData(loudnessTimeDomainBuffer)
+  let sum = 0
+  for (let i = 0; i < length; i += 1) {
+    const sample = loudnessTimeDomainBuffer[i]
+    sum += sample * sample
+  }
+  return Math.sqrt(sum / Math.max(1, length))
+}
+
+/**
+ * MediaElementSource still multiplies by element.volume, so raw analyser RMS
+ * shrinks when the user turns the volume down. Undo that so loudness targets
+ * stay independent of the volume slider.
+ */
+const measureSourceRmsIndependentOfVolume = () => {
+  const raw = measureAnalyserRms()
+  if (!currentAudioElement) return raw
+  const elementVolume = currentAudioElement.volume
+  if (!Number.isFinite(elementVolume) || elementVolume <= 0.02) return raw
+  return raw / elementVolume
+}
+
+const startLoudnessMeter = () => {
+  if (!engineNodes) return
+  if (loudnessMeterActive) return
+  loudnessMeterActive = true
+  if (loudnessMeterTimer != null) {
+    window.clearInterval(loudnessMeterTimer)
+  }
+  loudnessMeterTimer = window.setInterval(() => {
+    if (!loudnessMeterActive || !engineNodes) return
+
+    // Keep the context alive; first enable mid-playback used to leave it suspended.
+    if (engineNodes.context.state === 'suspended') {
+      void engineNodes.context.resume().catch(() => {})
+      return
+    }
+
+    const rms = measureSourceRmsIndependentOfVolume()
+    // Skip near-silence so we don't amplify noise between tracks / during pause ramps.
+    if (rms < LOUDNESS_SILENCE_RMS) return
+
+    const targetRms = targetDbToRms(activeLoudnessTargetDb)
+
+    // After the measure window, keep a slowly adapting locked gain so one track
+    // doesn't pump with every quiet verse / loud chorus.
+    if (loudnessLockedLinear != null) {
+      // Very slow drift: blend 2% toward a fresh estimate so long tracks still track.
+      const fresh = clampLoudnessLinear(targetRms / rms)
+      const blended = loudnessLockedLinear * 0.98 + fresh * 0.02
+      loudnessLockedLinear = clampLoudnessLinear(blended)
+      setLoudnessGainLinear(loudnessLockedLinear, true, LOUDNESS_LOCK_SMOOTH_TIME_CONSTANT)
+      return
+    }
+
+    loudnessMeasureSumSquares += rms * rms
+    loudnessMeasureSampleFrames += 1
+    loudnessMeasureElapsedMs += LOUDNESS_METER_INTERVAL_MS
+
+    const integratedRms = Math.sqrt(
+      loudnessMeasureSumSquares / Math.max(1, loudnessMeasureSampleFrames),
+    )
+    const desired = clampLoudnessLinear(targetRms / integratedRms)
+    setLoudnessGainLinear(desired, true, LOUDNESS_SMOOTH_TIME_CONSTANT)
+
+    if (loudnessMeasureElapsedMs >= LOUDNESS_MEASURE_MS && loudnessMeasureSampleFrames >= 8) {
+      loudnessLockedLinear = desired
+      console.debug(
+        '[Loudness] locked track gain',
+        `${(20 * Math.log10(desired)).toFixed(1)} dB`,
+        `(linear ${desired.toFixed(2)}, rms ${integratedRms.toFixed(4)}, target ${activeLoudnessTargetDb} dB)`,
+      )
+    }
+  }, LOUDNESS_METER_INTERVAL_MS)
+}
+
+/**
+ * Apply loudness compensation for the current track.
+ * - Settings off → gain 1, stop meter
+ * - ReplayGain present → static gain, stop meter
+ * - Otherwise → integrate short-term RMS for ~2.5s then lock per track
+ */
+export const applyLoudnessForSong = (
+  settings: AudioEffectsSettings,
+  song?: LoudnessSongLike | null,
+) => {
+  const targetDb = normalizeLoudnessTargetDb(settings.loudnessTargetDb)
+  activeLoudnessTargetDb = targetDb
+
+  if (!settings.loudnessEqEnabled) {
+    stopLoudnessMeter()
+    resetLoudnessMeterState()
+    if (engineNodes) setLoudnessGainLinear(1, true)
+    else lastAppliedLoudnessLinear = 1
+    return
+  }
+
+  if (!currentAudioElement) return
+
+  if (!engineNodes) {
+    ensureEngine(currentAudioElement)
+  }
+  if (!engineNodes) return
+
+  // Enabling mid-playback creates a fresh AudioContext that starts suspended;
+  // without resume(), createMediaElementSource steals output and metering sees silence.
+  if (engineNodes.context.state !== 'running') {
+    void engineNodes.context.resume().catch(() => {})
+  }
+
+  const staticLinear = computeReplayGainLinear(song, targetDb)
+  if (staticLinear != null) {
+    stopLoudnessMeter()
+    resetLoudnessMeterState()
+    setLoudnessGainLinear(staticLinear, true)
+    console.debug(
+      '[Loudness] ReplayGain',
+      `${(20 * Math.log10(staticLinear)).toFixed(1)} dB`,
+      `(linear ${staticLinear.toFixed(2)}, target ${targetDb} dB)`,
+      song?.replayGain,
+    )
+    return
+  }
+
+  // New track / target change / enable: restart integration so we re-estimate.
+  stopLoudnessMeter()
+  resetLoudnessMeterState()
+  // Don't inherit the previous track's boost/cut.
+  setLoudnessGainLinear(1, false)
+  startLoudnessMeter()
+}
+
 export const applyAudioEffectsSettings = (settings: AudioEffectsSettings) => {
   if (!currentAudioElement) return
 
@@ -497,15 +811,23 @@ export const applyAudioEffectsSettings = (settings: AudioEffectsSettings) => {
     stopPannerAnimation()
   }
 
+  if (!settings.loudnessEqEnabled) {
+    stopLoudnessMeter()
+    setLoudnessGainLinear(1, true)
+  }
+
   rebuildAudioRouting(settings)
 }
 
 export const cleanupAudioEffectsEngine = () => {
   clearPannerAnimation()
+  stopLoudnessMeter()
+  resetLoudnessMeterState()
   detachPassiveAnalyserListeners()
   cleanupPassiveAnalyser()
   if (!engineNodes) return
   engineNodes.masterGain.disconnect()
+  engineNodes.loudnessGain.disconnect()
   engineNodes.panner.disconnect()
   engineNodes.convolver.disconnect()
   engineNodes.wetInputGain.disconnect()
@@ -517,6 +839,7 @@ export const cleanupAudioEffectsEngine = () => {
   engineNodes.context.close().catch(() => {})
   engineNodes = null
   currentAudioElement = null
+  lastAppliedLoudnessLinear = 1
 }
 
 // Build a short sine-wave WAV in memory.  Used for the device test button so the tone reliably

@@ -31,6 +31,14 @@ export interface LxSongMeta {
 }
 
 // Song Types
+/** ReplayGain / loudness tags from local file metadata (when available). */
+export interface SongReplayGain {
+  trackGainDb?: number
+  trackPeak?: number
+  albumGainDb?: number
+  albumPeak?: number
+}
+
 export interface Song {
   id: string
   name: string
@@ -51,6 +59,8 @@ export interface Song {
   localModifiedAt?: string
   localTrackNo?: number
   localDiscNo?: number
+  /** Local ReplayGain tags; used by loudness equalization when present. */
+  replayGain?: SongReplayGain
 }
 
 export interface LocalSongEmbeddedTags {
@@ -232,6 +242,14 @@ export interface AudioEffectsState {
   spatialAudioRadius: number
   spatialAudioSpeed: number
   playbackRate: number
+  /** Unify perceived loudness across tracks (ReplayGain + real-time RMS). */
+  loudnessEqEnabled: boolean
+  /**
+   * Target short-term level for loudness equalization, in dBFS-ish RMS units.
+   * Lower = quieter target (more cut on loud tracks); higher = louder target.
+   * Typical range: -24 … -8, default -14.
+   */
+  loudnessTargetDb: number
 }
 
 // Search Types

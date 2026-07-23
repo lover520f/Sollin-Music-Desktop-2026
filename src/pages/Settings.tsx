@@ -85,7 +85,15 @@ import { PLAYER_MODE_OPTIONS } from '@/constants/playerModes'
 import type { BackupSelection } from '@/types/backup'
 import BackupModal from '@/components/modals/BackupModal'
 import BackupItemChecklist from '@/components/backup/BackupItemChecklist'
-import { EQ_FREQUENCIES, EQ_PRESETS, REVERB_PRESETS, playAudioOutputTestTone } from '@/utils/audioEffects'
+import {
+  EQ_FREQUENCIES,
+  EQ_PRESETS,
+  LOUDNESS_TARGET_DB_DEFAULT,
+  LOUDNESS_TARGET_DB_MAX,
+  LOUDNESS_TARGET_DB_MIN,
+  REVERB_PRESETS,
+  playAudioOutputTestTone,
+} from '@/utils/audioEffects'
 import {
   DEFAULT_GLOBAL_SHORTCUTS,
   GLOBAL_SHORTCUT_ITEMS,
@@ -489,6 +497,8 @@ export default function Settings() {
     setSpatialAudioRadius,
     setSpatialAudioSpeed,
     setPlaybackRate,
+    setLoudnessEqEnabled,
+    setLoudnessTargetDb,
   } = usePlayerStore()
   const downloadFileNameRuleEnabled = useDownloadStore((state) => state.downloadFileNameRuleEnabled)
   const downloadFileNameParts = useDownloadStore((state) => state.downloadFileNameParts)
@@ -3950,9 +3960,64 @@ export default function Settings() {
             <Sliders className="w-4 h-4" />
             音效处理
           </h2>
-          <p className="text-sm text-[var(--text-muted)] mt-1">可视化、均衡器、混响、环绕声和播放速率</p>
+          <p className="text-sm text-[var(--text-muted)] mt-1">响度均衡、可视化、均衡器、混响、环绕声和播放速率</p>
         </div>
         <div className="p-4 space-y-5">
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-medium">响度均衡</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  统一不同歌曲的听感音量。优先使用本地文件的 ReplayGain 标签，无标签或在线曲目则实时补偿。
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={audioEffects.loudnessEqEnabled}
+                onClick={() => setLoudnessEqEnabled(!audioEffects.loudnessEqEnabled)}
+                className={cn(
+                  'relative inline-flex h-7 w-12 items-center rounded-full transition-colors',
+                  audioEffects.loudnessEqEnabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-700'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
+                    audioEffects.loudnessEqEnabled ? 'translate-x-6' : 'translate-x-1'
+                  )}
+                />
+              </button>
+            </div>
+
+            <label className="block rounded-xl bg-gray-50 p-3 dark:bg-gray-800/50">
+              <div className="flex items-center justify-between text-xs">
+                <span>目标响度</span>
+                <span>
+                  {audioEffects.loudnessTargetDb} dB
+                  {audioEffects.loudnessTargetDb === LOUDNESS_TARGET_DB_DEFAULT ? '（默认）' : ''}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={LOUDNESS_TARGET_DB_MIN}
+                max={LOUDNESS_TARGET_DB_MAX}
+                step={1}
+                value={audioEffects.loudnessTargetDb}
+                onChange={(event) => setLoudnessTargetDb(Number(event.target.value))}
+                className="mt-3 w-full accent-primary-500"
+                aria-label="响度均衡目标电平"
+              />
+              <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+                <span>更安静（{LOUDNESS_TARGET_DB_MIN}）</span>
+                <span>更响亮（{LOUDNESS_TARGET_DB_MAX}）</span>
+              </div>
+              <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                数值越大整体听感越响。推荐：流媒体约 -14，偏安静约 -18，偏响约 -11。拖动滑条会自动开启响度均衡。
+              </p>
+            </label>
+          </div>
+
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div>

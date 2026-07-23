@@ -121,6 +121,12 @@ type LocalSongMetadataDetail = {
     localModifiedAt?: string
     localTrackNo?: number
     localDiscNo?: number
+    replayGain?: {
+      trackGainDb?: number
+      trackPeak?: number
+      albumGainDb?: number
+      albumPeak?: number
+    }
   }
   filePath: string
   fileName: string
@@ -438,6 +444,12 @@ declare global {
           localModifiedAt?: string
           localTrackNo?: number
           localDiscNo?: number
+          replayGain?: {
+            trackGainDb?: number
+            trackPeak?: number
+            albumGainDb?: number
+            albumPeak?: number
+          }
         }>
         scannedAt: string
       }>

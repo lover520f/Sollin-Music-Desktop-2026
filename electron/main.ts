@@ -339,6 +339,13 @@ type DownloadBinaryResult = {
   mimeType: string | null
 }
 
+type LocalSongReplayGain = {
+  trackGainDb?: number
+  trackPeak?: number
+  albumGainDb?: number
+  albumPeak?: number
+}
+
 type LocalMusicSong = {
   id: string
   name: string
@@ -355,6 +362,8 @@ type LocalMusicSong = {
   localModifiedAt?: string
   localTrackNo?: number
   localDiscNo?: number
+  /** ReplayGain tags from music-metadata when present. */
+  replayGain?: LocalSongReplayGain
 }
 
 type LocalSongEmbeddedTags = {
@@ -2291,6 +2300,58 @@ function getRawLocalSongArtist(common: IAudioMetadata['common']) {
     || undefined
 }
 
+/** Pull ReplayGain dB / peak from music-metadata common tags when present. */
+function extractLocalSongReplayGain(common: IAudioMetadata['common']): LocalSongReplayGain | undefined {
+  const readDb = (value: { dB?: number; ratio?: number } | number | undefined) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (!value || typeof value !== 'object') return undefined
+    if (typeof value.dB === 'number' && Number.isFinite(value.dB)) return value.dB
+    if (typeof value.ratio === 'number' && Number.isFinite(value.ratio) && value.ratio > 0) {
+      return 20 * Math.log10(value.ratio)
+    }
+    return undefined
+  }
+
+  const readPeak = (value: { ratio?: number; dB?: number } | number | undefined) => {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value
+    if (!value || typeof value !== 'object') return undefined
+    if (typeof value.ratio === 'number' && Number.isFinite(value.ratio) && value.ratio > 0) {
+      return value.ratio
+    }
+    if (typeof value.dB === 'number' && Number.isFinite(value.dB)) {
+      return 10 ** (value.dB / 20)
+    }
+    return undefined
+  }
+
+  const trackGainDb = readDb(common.replaygain_track_gain)
+    ?? (typeof common.replaygain_track_gain_ratio === 'number' && common.replaygain_track_gain_ratio > 0
+      ? 20 * Math.log10(common.replaygain_track_gain_ratio)
+      : undefined)
+  const albumGainDb = readDb(common.replaygain_album_gain)
+  const trackPeak = readPeak(common.replaygain_track_peak)
+    ?? (typeof common.replaygain_track_peak_ratio === 'number' && common.replaygain_track_peak_ratio > 0
+      ? common.replaygain_track_peak_ratio
+      : undefined)
+  const albumPeak = readPeak(common.replaygain_album_peak)
+
+  if (
+    trackGainDb == null
+    && albumGainDb == null
+    && trackPeak == null
+    && albumPeak == null
+  ) {
+    return undefined
+  }
+
+  return {
+    trackGainDb,
+    trackPeak,
+    albumGainDb,
+    albumPeak,
+  }
+}
+
 function getRawLocalSongTags(metadata: IAudioMetadata, embeddedTracks?: EmbeddedLyricTracks): LocalSongEmbeddedTags {
   return {
     title: normalizeTagText(metadata.common.title),
@@ -2470,6 +2531,7 @@ async function parseLocalMusicSong(filePath: string, rootFolder: string, skipExt
       localModifiedAt: fileStat.mtime.toISOString(),
       localTrackNo: trackNo,
       localDiscNo: discNo,
+      replayGain: extractLocalSongReplayGain(metadata.common),
     }
   } catch (error) {
     console.warn('Parse local music metadata failed:', filePath, error)

@@ -25,6 +25,8 @@ import {
   EQ_PRESETS,
   attachAudioEffectsEngine,
   applyAudioEffectsSettings,
+  applyLoudnessForSong,
+  normalizeLoudnessTargetDb,
   resumeAudioEffectsEngine,
   setAudioEffectsOutputDevice,
 } from '@/utils/audioEffects'
@@ -425,6 +427,8 @@ interface PlayerStore {
   setSpatialAudioRadius: (radius: number) => void
   setSpatialAudioSpeed: (speed: number) => void
   setPlaybackRate: (rate: number) => void
+  setLoudnessEqEnabled: (enabled: boolean) => void
+  setLoudnessTargetDb: (targetDb: number) => void
   startSleepTimer: (seconds: number) => void
   stopAfterCurrentSong: () => void
   stopSleepTimer: () => void
@@ -1135,6 +1139,9 @@ export const usePlayerStore = create<PlayerStore>()(
             url: song.platform === 'local' ? streamUrl : resource.requestUrl,
           }
 
+          // Per-track loudness compensation (ReplayGain or real-time RMS).
+          applyLoudnessForSong(get().audioEffects, playbackSong)
+
           activeToggleSong = resource.toggleSong ?? null
 
           const sourceSwitchInfo: SourceSwitchInfo | null = options.explicitSourceSwitchInfo
@@ -1253,11 +1260,12 @@ export const usePlayerStore = create<PlayerStore>()(
         }
 
         // Apply persisted volume immediately
-        const { volume, isMuted, audioEffects } = get()
+        const { volume, isMuted, audioEffects, currentSong } = get()
         console.log('[PlayerStore] setAudioRef - applying volume:', { volume, isMuted })
         ref.volume = isMuted ? 0 : volume
         console.log('[PlayerStore] Audio ref volume set to:', ref.volume)
         applyAudioEffectsSettings(audioEffects)
+        applyLoudnessForSong(audioEffects, currentSong)
 
         // Apply saved audio output device when audio ref is set.  Route through the low-level
         // helper (not the guarded setAudioOutputDevice action) because the action short-circuits
@@ -2337,6 +2345,30 @@ export const usePlayerStore = create<PlayerStore>()(
         set({ audioEffects: nextAudioEffects })
       },
 
+      setLoudnessEqEnabled: (enabled) => {
+        const nextAudioEffects = { ...get().audioEffects, loudnessEqEnabled: enabled }
+        applyAudioEffectsSettings(nextAudioEffects)
+        // Fresh AudioContext starts suspended; resume so loudnessGain is audible immediately.
+        void resumeAudioEffectsEngine().finally(() => {
+          applyLoudnessForSong(nextAudioEffects, get().currentSong)
+        })
+        set({ audioEffects: nextAudioEffects })
+      },
+
+      setLoudnessTargetDb: (targetDb) => {
+        const nextAudioEffects = {
+          ...get().audioEffects,
+          // Auto-enable when the user moves the target, same idea as EQ sliders.
+          loudnessEqEnabled: true,
+          loudnessTargetDb: normalizeLoudnessTargetDb(targetDb),
+        }
+        applyAudioEffectsSettings(nextAudioEffects)
+        void resumeAudioEffectsEngine().finally(() => {
+          applyLoudnessForSong(nextAudioEffects, get().currentSong)
+        })
+        set({ audioEffects: nextAudioEffects })
+      },
+
       startSleepTimer: (seconds) => {
         const normalizedSeconds = Math.max(60, Math.round(seconds))
         const endAt = Date.now() + normalizedSeconds * 1000
@@ -2403,11 +2435,16 @@ export const usePlayerStore = create<PlayerStore>()(
                 ...DEFAULT_AUDIO_EFFECTS_SETTINGS,
                 ...state.audioEffects,
                 eqGains: normalizedEqGains,
+                loudnessEqEnabled: state.audioEffects.loudnessEqEnabled === true,
+                loudnessTargetDb: normalizeLoudnessTargetDb(
+                  state.audioEffects.loudnessTargetDb ?? DEFAULT_AUDIO_EFFECTS_SETTINGS.loudnessTargetDb,
+                ),
               }
               // Re-apply the normalized effects to the live audio graph so EQ / reverb / spatial
               // settings take effect immediately after restart without waiting for the user to
               // touch a slider.
               applyAudioEffectsSettings(state.audioEffects)
+              applyLoudnessForSong(state.audioEffects, state.currentSong)
             }
             if (state) {
               state.preloadSongCount = normalizePreloadSongCount(state.preloadSongCount)
