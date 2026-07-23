@@ -1695,7 +1695,7 @@ function LyricsPanel({
               <PlaybackRateMenu
                 triggerClassName={cn(
                   pillButtonClass,
-                  'h-10 min-w-[4.35rem] px-3',
+                  'min-w-[3.25rem] px-3',
                   audioEffects.playbackRate !== 1 && (isDarkAppearance ? 'bg-white/18 text-white' : 'bg-slate-900/14 text-slate-900')
                 )}
                 contentClassName={menuClass}
@@ -1703,6 +1703,7 @@ function LyricsPanel({
                 mutedClassName={textMutedClass}
                 side="top"
                 align="center"
+                showIcon={false}
               />
 
               <div className="relative">

@@ -44,15 +44,19 @@ export default function PlaybackRateMenu({
           type="button"
           disabled={!currentSong}
           className={cn(
-            'inline-flex h-8 min-w-[3.25rem] items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors',
-            'bg-gray-100 text-[var(--text-secondary)] hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white/10 dark:text-[var(--text-secondary)] dark:hover:bg-white/15',
+            // 布局基类；外观默认仅在未传入 triggerClassName 时生效，避免盖住调用方的 btn-icon / pill 样式
+            'inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            !triggerClassName && [
+              'h-8 min-w-[3.25rem] px-2.5 text-xs',
+              'bg-gray-100 text-[var(--text-secondary)] hover:bg-gray-200 dark:bg-white/10 dark:text-[var(--text-secondary)] dark:hover:bg-white/15',
+            ],
             triggerClassName,
             className,
           )}
           title="播放倍速"
         >
-          {showIcon && <Gauge className="h-4 w-4" />}
-          <span>{displayRate}</span>
+          {showIcon && <Gauge className="h-4 w-4 shrink-0" />}
+          <span className="leading-none">{displayRate}</span>
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

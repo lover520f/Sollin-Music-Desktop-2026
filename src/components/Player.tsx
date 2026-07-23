@@ -816,10 +816,11 @@ export default function Player() {
           </DropdownMenu.Root>
 
           <PlaybackRateMenu
-            triggerClassName="h-9 min-w-[3.75rem] bg-transparent px-2 text-[12px] hover:bg-[var(--hover-bg)] dark:bg-transparent dark:hover:bg-white/10"
+            triggerClassName="btn-icon h-9 min-w-[3.5rem] gap-1 px-2.5 text-xs font-medium"
             contentClassName="z-50"
             side="top"
             align="end"
+            showIcon={false}
           />
 
           <button onClick={toggleQueuePanel} className="btn-icon">
